@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "author": "Museum Storage Project",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 40, "left": 20, "attrs": {} },
+    {
+      "type": "wokwi-dht22",
+      "id": "dht",
+      "top": 89.4,
+      "left": 306.3,
+      "rotate": 90,
+      "attrs": { "temperature": "22.5", "humidity": "53" }
+    },
+    {
+      "type": "wokwi-photoresistor-sensor",
+      "id": "ldr",
+      "top": 41.4,
+      "left": 228.4,
+      "rotate": 180,
+      "attrs": { "lux": "500", "rl10": "50", "gamma": "0.7" }
+    },
+    {
+      "type": "board-ssd1306",
+      "id": "oled",
+      "top": -44.86,
+      "left": -86.17,
+      "attrs": { "i2cAddress": "0x3c" }
+    },
+    {
+      "type": "wokwi-relay-module",
+      "id": "relay",
+      "top": 182.6,
+      "left": 172.8,
+      "attrs": { "transistor": "pnp" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "fan",
+      "top": 265.2,
+      "left": 234.2,
+      "attrs": { "color": "blue", "label": "Fan" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "fanResistor",
+      "top": 273.6,
+      "left": 258.65,
+      "rotate": 90,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 120.3,
+      "left": -137.1,
+      "rotate": 270,
+      "attrs": { "volume": "0.3", "mode": "smooth" }
+    }
+  ],
+  "connections": [
+    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX0", "$serialMonitor:TX", "", [] ],
+    [ "dht:VCC", "esp:3V3", "red", [ "h-134.4", "v64.1" ] ],
+    [ "dht:GND", "esp:GND.1", "black", [] ],
+    [ "dht:SDA", "esp:D15", "green", [ "h-124.8", "v35.6" ] ],
+    [ "ldr:VCC", "esp:3V3", "red", [ "h-96", "v112.1" ] ],
+    [ "ldr:GND", "esp:GND.1", "black", [ "h-67.2", "v112.6" ] ],
+    [ "ldr:AO", "esp:D34", "green", [ "h-220.8", "v36.2" ] ],
+    [ "oled:VCC", "esp:3V3", "red", [ "v-28.8", "h93.63", "v265.7" ] ],
+    [ "oled:GND", "esp:GND.2", "black", [ "v227.4" ] ],
+    [ "oled:SDA", "esp:D21", "green", [ "v-9.6", "h112.83", "v150.9" ] ],
+    [ "oled:SCL", "esp:D22", "blue", [ "v-19.2", "h103.23", "v131.6" ] ],
+    [ "relay:VCC", "esp:3V3", "red", [ "h-19.2", "h-32.3" ] ],
+    [ "relay:GND", "esp:GND.2", "black", [ "h-182.4", "v-22.6" ] ],
+    [ "relay:IN", "esp:D26", "orange", [ "h-163.2", "v-80" ] ],
+    [ "esp:3V3", "relay:COM", "red", [] ],
+    [ "relay:NO", "fanResistor:1", "orange", [] ],
+    [ "fanResistor:2", "fan:A", "orange", [] ],
+    [ "fan:C", "esp:GND.1", "black", [] ],
+    [ "buzzer:2", "esp:D27", "purple", [ "v-9.2", "h82.6" ] ],
+    [ "buzzer:1", "esp:GND.2", "green", [ "v19.2", "h82.6" ] ]
+  ],
+  "dependencies": {}
+}
