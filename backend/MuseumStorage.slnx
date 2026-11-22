@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MuseumStorage.Api/MuseumStorage.Api.csproj" />
+  <Project Path="MuseumStorage.Domain/MuseumStorage.Domain.csproj" />
+  <Project Path="MuseumStorage.Infrastructure/MuseumStorage.Infrastructure.csproj" />
+  <Project Path="MuseumStorage.Tests/MuseumStorage.Tests.csproj" />
+</Solution>

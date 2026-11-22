@@ -1,0 +1,33 @@
+# .NET
+**/bin/
+**/obj/
+*.user
+*.suo
+
+# SQLite runtime database
+*.db
+*.db-shm
+*.db-wal
+
+# Visual Studio
+.vs/
+
+# VS Code
+.vscode/
+
+# Node / frontend
+node_modules/
+dist/
+
+# PlatformIO
+.pio/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+appsettings.Development.local.json
