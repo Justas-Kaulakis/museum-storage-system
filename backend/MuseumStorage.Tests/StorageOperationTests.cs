@@ -3,8 +3,8 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using MuseumStorage.Api.Controllers;
 using MuseumStorage.Api.Models;
-using MuseumStorage.Domain.Entities;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Entities;
+using MuseumStorage.Api.Data;
 
 namespace MuseumStorage.Tests;
 

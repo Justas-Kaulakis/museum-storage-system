@@ -217,10 +217,8 @@ Current backend stack:
 Current solution structure:
 
 backend/
-- MuseumStorage.Api/
-- MuseumStorage.Domain/
-- MuseumStorage.Infrastructure/
-- MuseumStorage.Tests/
+- MuseumStorage.Api/ contains the controllers, API models, entities, DbContext, and migrations.
+- MuseumStorage.Tests/ contains the backend tests.
 - MuseumStorage.slnx
 
 Do not replace the current architecture with minimal APIs or a different framework without an explicit reason.

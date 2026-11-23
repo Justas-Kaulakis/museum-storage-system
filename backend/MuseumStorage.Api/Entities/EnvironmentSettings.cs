@@ -1,4 +1,4 @@
-namespace MuseumStorage.Domain.Entities;
+namespace MuseumStorage.Api.Entities;
 
 public class EnvironmentSettings
 {

@@ -20,7 +20,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MuseumStorage.Api\MuseumStorage.Api.csproj" />
-    <ProjectReference Include="..\MuseumStorage.Domain\MuseumStorage.Domain.csproj" />
   </ItemGroup>
 
 </Project>

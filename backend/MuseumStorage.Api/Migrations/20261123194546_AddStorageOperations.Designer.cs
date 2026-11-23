@@ -2,22 +2,25 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Data;
 
 #nullable disable
 
-namespace MuseumStorage.Infrastructure.Migrations
+namespace MuseumStorage.Api.Migrations
 {
     [DbContext(typeof(MuseumStorageDbContext))]
-    partial class MuseumStorageDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261123194546_AddStorageOperations")]
+    partial class AddStorageOperations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.EnvironmentSettings", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.EnvironmentSettings", b =>
                 {
                     b.Property<int>("Id")
                         .HasColumnType("INTEGER");
@@ -60,7 +63,7 @@ namespace MuseumStorage.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.Exhibit", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -102,7 +105,7 @@ namespace MuseumStorage.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.SensorReading", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.SensorReading", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -135,7 +138,7 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.ToTable("SensorReadings");
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.StorageLocation", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageLocation", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -157,7 +160,7 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.ToTable("StorageLocations");
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.StorageOperation", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageOperation", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -190,9 +193,9 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.ToTable("StorageOperations");
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.Exhibit", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
                 {
-                    b.HasOne("MuseumStorage.Domain.Entities.StorageLocation", "StorageLocation")
+                    b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "StorageLocation")
                         .WithMany()
                         .HasForeignKey("StorageLocationId")
                         .OnDelete(DeleteBehavior.Restrict);
@@ -200,20 +203,20 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.Navigation("StorageLocation");
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.StorageOperation", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageOperation", b =>
                 {
-                    b.HasOne("MuseumStorage.Domain.Entities.Exhibit", null)
+                    b.HasOne("MuseumStorage.Api.Entities.Exhibit", null)
                         .WithMany()
                         .HasForeignKey("ExhibitId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("MuseumStorage.Domain.Entities.StorageLocation", "FromStorageLocation")
+                    b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "FromStorageLocation")
                         .WithMany()
                         .HasForeignKey("FromStorageLocationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
-                    b.HasOne("MuseumStorage.Domain.Entities.StorageLocation", "ToStorageLocation")
+                    b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "ToStorageLocation")
                         .WithMany()
                         .HasForeignKey("ToStorageLocationId")
                         .OnDelete(DeleteBehavior.Restrict);

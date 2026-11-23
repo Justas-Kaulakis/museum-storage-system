@@ -2,8 +2,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using MuseumStorage.Api.Models;
-using MuseumStorage.Domain.Entities;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Entities;
+using MuseumStorage.Api.Data;
 using SQLitePCL;
 
 namespace MuseumStorage.Api.Controllers;

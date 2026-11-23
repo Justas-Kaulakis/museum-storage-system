@@ -4,11 +4,11 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Data;
 
 #nullable disable
 
-namespace MuseumStorage.Infrastructure.Migrations
+namespace MuseumStorage.Api.Migrations
 {
     [DbContext(typeof(MuseumStorageDbContext))]
     [Migration("20261122204320_InitialCreate")]
@@ -20,7 +20,7 @@ namespace MuseumStorage.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.SensorReading", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.SensorReading", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()

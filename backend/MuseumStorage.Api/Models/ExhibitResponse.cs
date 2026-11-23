@@ -1,4 +1,4 @@
-using MuseumStorage.Domain.Entities;
+using MuseumStorage.Api.Entities;
 
 namespace MuseumStorage.Api.Models;
 

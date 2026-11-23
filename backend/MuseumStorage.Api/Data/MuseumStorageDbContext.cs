@@ -1,7 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
-using MuseumStorage.Domain.Entities;
+using MuseumStorage.Api.Entities;
 
-namespace MuseumStorage.Infrastructure.Data;
+namespace MuseumStorage.Api.Data;
 
 public class MuseumStorageDbContext : DbContext
 {
@@ -23,7 +23,7 @@ public class MuseumStorageDbContext : DbContext
         settings.Property(x => x.Id).ValueGeneratedNever();
         settings.HasData(new EnvironmentSettings
         {
-            Id = Domain.Entities.EnvironmentSettings.GlobalId,
+            Id = Entities.EnvironmentSettings.GlobalId,
             FanOnTemperature = 26.0,
             FanOffTemperature = 25.0,
             FanOnHumidity = 70.0,

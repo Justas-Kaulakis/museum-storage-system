@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MuseumStorage.Api.Models;
-using MuseumStorage.Domain.Entities;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Entities;
+using MuseumStorage.Api.Data;
 
 namespace MuseumStorage.Api.Controllers;
 

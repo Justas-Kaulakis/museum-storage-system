@@ -5,7 +5,7 @@ Simulate this project on https://wokwi.com
 Local backend setup (from the repository root)
 
 cd backend/MuseumStorage.Api
-dotnet ef database update --project ../MuseumStorage.Infrastructure --startup-project .
+dotnet ef database update
 dotnet run --launch-profile http
 
 Use the HTTP-only launch profile so requests to port 5054 stay on HTTP.

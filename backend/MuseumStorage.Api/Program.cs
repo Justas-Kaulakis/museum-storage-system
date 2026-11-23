@@ -1,5 +1,5 @@
 using Microsoft.EntityFrameworkCore;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 

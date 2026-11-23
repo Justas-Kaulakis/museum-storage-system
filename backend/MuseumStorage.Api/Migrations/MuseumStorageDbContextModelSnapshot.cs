@@ -2,25 +2,22 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Data;
 
 #nullable disable
 
-namespace MuseumStorage.Infrastructure.Migrations
+namespace MuseumStorage.Api.Migrations
 {
     [DbContext(typeof(MuseumStorageDbContext))]
-    [Migration("20261123172906_AddExhibitsAndStorageLocations")]
-    partial class AddExhibitsAndStorageLocations
+    partial class MuseumStorageDbContextModelSnapshot : ModelSnapshot
     {
-        /// <inheritdoc />
-        protected override void BuildTargetModel(ModelBuilder modelBuilder)
+        protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.EnvironmentSettings", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.EnvironmentSettings", b =>
                 {
                     b.Property<int>("Id")
                         .HasColumnType("INTEGER");
@@ -63,7 +60,7 @@ namespace MuseumStorage.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.Exhibit", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -84,10 +81,12 @@ namespace MuseumStorage.Infrastructure.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Status")
+                        .IsConcurrencyToken()
                         .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<long?>("StorageLocationId")
+                        .IsConcurrencyToken()
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
@@ -103,7 +102,7 @@ namespace MuseumStorage.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.SensorReading", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.SensorReading", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -136,7 +135,7 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.ToTable("SensorReadings");
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.StorageLocation", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageLocation", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -158,14 +157,70 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.ToTable("StorageLocations");
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.Exhibit", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageOperation", b =>
                 {
-                    b.HasOne("MuseumStorage.Domain.Entities.StorageLocation", "StorageLocation")
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("ExhibitId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("FromStorageLocationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("ToStorageLocationId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExhibitId");
+
+                    b.HasIndex("FromStorageLocationId");
+
+                    b.HasIndex("ToStorageLocationId");
+
+                    b.ToTable("StorageOperations");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
+                {
+                    b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "StorageLocation")
                         .WithMany()
                         .HasForeignKey("StorageLocationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("StorageLocation");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageOperation", b =>
+                {
+                    b.HasOne("MuseumStorage.Api.Entities.Exhibit", null)
+                        .WithMany()
+                        .HasForeignKey("ExhibitId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "FromStorageLocation")
+                        .WithMany()
+                        .HasForeignKey("FromStorageLocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "ToStorageLocation")
+                        .WithMany()
+                        .HasForeignKey("ToStorageLocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("FromStorageLocation");
+
+                    b.Navigation("ToStorageLocation");
                 });
 #pragma warning restore 612, 618
         }

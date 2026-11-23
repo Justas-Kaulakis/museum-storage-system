@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace MuseumStorage.Infrastructure.Migrations
+namespace MuseumStorage.Api.Migrations
 {
     /// <inheritdoc />
     public partial class InitialCreate : Migration

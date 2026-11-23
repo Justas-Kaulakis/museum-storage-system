@@ -8,7 +8,7 @@ Use the .NET 10 SDK and the EF Core CLI. Run these commands from the repository 
 
 ```powershell
 cd backend/MuseumStorage.Api
-dotnet ef database update --project ../MuseumStorage.Infrastructure --startup-project .
+dotnet ef database update
 dotnet run --launch-profile http
 ```
 

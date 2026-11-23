@@ -4,15 +4,15 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using MuseumStorage.Infrastructure.Data;
+using MuseumStorage.Api.Data;
 
 #nullable disable
 
-namespace MuseumStorage.Infrastructure.Migrations
+namespace MuseumStorage.Api.Migrations
 {
     [DbContext(typeof(MuseumStorageDbContext))]
-    [Migration("20261122215133_AddEnvironmentSettings")]
-    partial class AddEnvironmentSettings
+    [Migration("20261123172906_AddExhibitsAndStorageLocations")]
+    partial class AddExhibitsAndStorageLocations
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -20,7 +20,7 @@ namespace MuseumStorage.Infrastructure.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.15");
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.EnvironmentSettings", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.EnvironmentSettings", b =>
                 {
                     b.Property<int>("Id")
                         .HasColumnType("INTEGER");
@@ -63,7 +63,47 @@ namespace MuseumStorage.Infrastructure.Migrations
                         });
                 });
 
-            modelBuilder.Entity("MuseumStorage.Domain.Entities.SensorReading", b =>
+            modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Category")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("StorageLocationId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("StorageLocationId");
+
+                    b.ToTable("Exhibits", t =>
+                        {
+                            t.HasCheckConstraint("CK_Exhibits_StatusAndStorageLocation", "(Status = 'Stored' AND StorageLocationId IS NOT NULL) OR (Status = 'CheckedOut' AND StorageLocationId IS NULL)");
+                        });
+                });
+
+            modelBuilder.Entity("MuseumStorage.Api.Entities.SensorReading", b =>
                 {
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
@@ -94,6 +134,38 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SensorReadings");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageLocation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("StorageLocations");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
+                {
+                    b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "StorageLocation")
+                        .WithMany()
+                        .HasForeignKey("StorageLocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("StorageLocation");
                 });
 #pragma warning restore 612, 618
         }

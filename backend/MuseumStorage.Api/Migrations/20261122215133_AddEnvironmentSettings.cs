@@ -2,7 +2,7 @@
 
 #nullable disable
 
-namespace MuseumStorage.Infrastructure.Migrations
+namespace MuseumStorage.Api.Migrations
 {
     /// <inheritdoc />
     public partial class AddEnvironmentSettings : Migration
