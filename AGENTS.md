@@ -7,7 +7,7 @@ This repository contains a university cyber-physical engineering project: a muse
 The system has two major parts:
 
 1. A physical embedded subsystem that monitors storage conditions and protects exhibits.
-2. A server-side information system that stores telemetry, manages exhibits and storage operations, exposes a REST API, and later provides a Web UI.
+2. A server-side information system that stores telemetry, manages exhibits and storage operations, and exposes a REST API used by the React Web UI.
 
 The physical protection subsystem must remain operational even when the server, database, network, or Wi-Fi connection is unavailable.
 
@@ -172,15 +172,17 @@ The complete system should eventually support:
 - optional email notifications may be added later.
 
 ### Web UI
-The future Web UI should provide:
+The React, Vite, and TypeScript frontend in `frontend/` covers these workflows.
+
 - dashboard/current environment;
 - exhibit list;
 - exhibit details;
 - storage locations;
 - exhibit operation history;
-- environmental history;
-- alerts;
-- environmental configuration.
+- environmental configuration;
+- QR image lookup.
+
+Environmental history and alerts are planned.
 
 ## Non-functional requirements currently agreed
 
