@@ -219,7 +219,7 @@ backend/
 - MuseumStorage.Domain/
 - MuseumStorage.Infrastructure/
 - MuseumStorage.Tests/
-- MuseumStorage.sln
+- MuseumStorage.slnx
 
 Do not replace the current architecture with minimal APIs or a different framework without an explicit reason.
 

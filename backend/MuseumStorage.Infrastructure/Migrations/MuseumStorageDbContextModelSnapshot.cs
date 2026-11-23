@@ -60,6 +60,46 @@ namespace MuseumStorage.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MuseumStorage.Domain.Entities.Exhibit", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Category")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<long?>("StorageLocationId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.HasIndex("StorageLocationId");
+
+                    b.ToTable("Exhibits", t =>
+                        {
+                            t.HasCheckConstraint("CK_Exhibits_StatusAndStorageLocation", "(Status = 'Stored' AND StorageLocationId IS NOT NULL) OR (Status = 'CheckedOut' AND StorageLocationId IS NULL)");
+                        });
+                });
+
             modelBuilder.Entity("MuseumStorage.Domain.Entities.SensorReading", b =>
                 {
                     b.Property<long>("Id")
@@ -91,6 +131,38 @@ namespace MuseumStorage.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("SensorReadings");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Domain.Entities.StorageLocation", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("StorageLocations");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Domain.Entities.Exhibit", b =>
+                {
+                    b.HasOne("MuseumStorage.Domain.Entities.StorageLocation", "StorageLocation")
+                        .WithMany()
+                        .HasForeignKey("StorageLocationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("StorageLocation");
                 });
 #pragma warning restore 612, 618
         }

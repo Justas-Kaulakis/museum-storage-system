@@ -1,6 +1,37 @@
 @MuseumStorage.Api_HostAddress = http://localhost:5054
 
-GET {{MuseumStorage.Api_HostAddress}}/weatherforecast/
+GET {{MuseumStorage.Api_HostAddress}}/api/sensor-readings
 Accept: application/json
 
 ###
+
+POST {{MuseumStorage.Api_HostAddress}}/api/sensor-readings
+Content-Type: application/json
+
+{
+  "deviceId": "museum-storage-01",
+  "temperature": 22.5,
+  "humidity": 53.0,
+  "lightLevel": 500,
+  "fanEnabled": false,
+  "alarmEnabled": false
+}
+
+###
+
+GET {{MuseumStorage.Api_HostAddress}}/api/environment-settings
+Accept: application/json
+
+###
+
+PUT {{MuseumStorage.Api_HostAddress}}/api/environment-settings
+Content-Type: application/json
+
+{
+  "fanOnTemperature": 26.0,
+  "fanOffTemperature": 25.0,
+  "fanOnHumidity": 70.0,
+  "fanOffHumidity": 65.0,
+  "temperatureAlarm": 30.0,
+  "humidityAlarm": 80.0
+}

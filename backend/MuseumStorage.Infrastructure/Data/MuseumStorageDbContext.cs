@@ -12,6 +12,8 @@ public class MuseumStorageDbContext : DbContext
 
     public DbSet<SensorReading> SensorReadings => Set<SensorReading>();
     public DbSet<EnvironmentSettings> EnvironmentSettings => Set<EnvironmentSettings>();
+    public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
+    public DbSet<Exhibit> Exhibits => Set<Exhibit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,5 +30,19 @@ public class MuseumStorageDbContext : DbContext
             TemperatureAlarm = 30.0,
             HumidityAlarm = 80.0
         });
+
+        modelBuilder.Entity<StorageLocation>().HasIndex(x => x.Code).IsUnique();
+
+        var exhibits = modelBuilder.Entity<Exhibit>();
+        exhibits.HasIndex(x => x.Code).IsUnique();
+        exhibits.Property(x => x.Status).HasConversion<string>();
+        exhibits.HasOne(x => x.StorageLocation)
+            .WithMany()
+            .HasForeignKey(x => x.StorageLocationId)
+            .OnDelete(DeleteBehavior.Restrict);
+        exhibits.ToTable(table => table.HasCheckConstraint(
+            "CK_Exhibits_StatusAndStorageLocation",
+            $"(Status = '{nameof(ExhibitStatus.Stored)}' AND StorageLocationId IS NOT NULL) OR " +
+            $"(Status = '{nameof(ExhibitStatus.CheckedOut)}' AND StorageLocationId IS NULL)"));
     }
 }
