@@ -6,3 +6,4 @@ Adafruit GFX Library
 
 DHT sensor library for ESPx
 Adafruit SSD1306
+ArduinoJson@7.4.3

@@ -1,3 +1,89 @@
 Downloaded from https://wokwi.com/projects/481413074640412673
 
 Simulate this project on https://wokwi.com
+
+Local backend setup (from the repository root)
+
+cd backend/MuseumStorage.Api
+dotnet ef database update --project ../MuseumStorage.Infrastructure --startup-project .
+dotnet run --launch-profile http
+
+Use the HTTP-only launch profile so requests to port 5054 stay on HTTP.
+
+Wokwi for VS Code
+
+Install the Wokwi Simulator extension. In VS Code, press F1 and choose
+"Wokwi: Request a new License". Wokwi offers a 30-day personal license and
+free use for qualifying open-source projects. Check eligibility before
+depending on the extension for the project.
+https://wokwi.com/license
+
+Open the wokwi folder in VS Code and run "Wokwi: Start Simulator" from F1.
+The extension has a built-in gateway for http://host.wokwi.internal:5054.
+Look for "Wi-Fi connected", "Environment settings applied", and
+"Telemetry sent" in the simulator's Serial Monitor.
+https://docs.wokwi.com/vscode/project-config#iot-gateway-esp32-wifi
+
+The simulator uses the merged firmware image and ELF in wokwi/bin.
+To rebuild after editing, install the ESP32 Arduino board package and the
+libraries in libraries.txt (including ArduinoJson 7.4.3), then run these
+PowerShell commands from the repository root with Arduino CLI on PATH.
+
+New-Item -ItemType Directory -Path wokwi/bin/sketch -Force | Out-Null
+Copy-Item -LiteralPath @('wokwi/sketch.ino','wokwi/environment-control.h') -Destination wokwi/bin/sketch
+arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir wokwi/bin wokwi/bin/sketch
+
+Browser simulator
+
+In a browser copy of the Wokwi project, replace sketch.ino and libraries.txt
+with the repository versions and add environment-control.h as a project file.
+Use diagram.json from this folder for the wiring.
+
+Start the Wokwi Private IoT Gateway on the same machine as the backend. In
+the Wokwi editor, press F1 and choose "Enable Private Wokwi IoT Gateway".
+Start the simulation and check for "Client connected" in the gateway output.
+The browser's Private Gateway requires a Wokwi plan that includes it.
+https://docs.wokwi.com/guides/esp32-wifi#the-private-gateway
+
+Manual checks
+
+1. Start with the default settings and DHT22 values of 22.5 C and 53%.
+   Confirm the fan and alarm are off and Serial prints "Telemetry sent".
+   Check for a recent reading with deviceId museum-storage-01.
+
+Invoke-RestMethod -Uri http://localhost:5054/api/sensor-readings
+
+2. Set the DHT22 to 26 C / 53%, then 22.5 C / 70%. Test each from
+   22.5 C / 53% and confirm the fan turns on and the alarm stays off.
+   While the fan is on, test 25.5 C / 65% and 25 C / 67%. Confirm it
+   stays on until both readings reach 25 C / 65% or below.
+3. Test 30 C / 53% and 22.5 C / 80%. Both the fan and alarm should turn on.
+4. Set the DHT22 to 24 C / 53% and send the settings below in PowerShell.
+   Within one refresh interval (about 30 simulated seconds), look for
+   "Environment settings applied" and check that the fan turns on.
+
+Invoke-RestMethod -Method Put -Uri http://localhost:5054/api/environment-settings -ContentType application/json -Body (@{fanOnTemperature=24;fanOffTemperature=23;fanOnHumidity=70;fanOffHumidity=65;temperatureAlarm=30;humidityAlarm=80} | ConvertTo-Json)
+
+5. Stop the backend while Wokwi keeps running. Confirm Serial reports
+   failures and the OLED still updates. Alternate between 23 C and 24 C at
+   53% to check that the last applied settings still control the fan. Test
+   the alarm at 30 C. Restart the backend and confirm telemetry and settings
+   resume without restarting the simulation.
+6. To check operation without a Wi-Fi association, temporarily set WIFI_SSID
+   to a nonexistent name in a test copy and start the simulation. Verify
+   connection retries while the OLED, relay and buzzer respond to the
+   DHT22 using the startup defaults. Restore Wokwi-GUEST after the check.
+7. To test a temporary Wi-Fi drop in the same run, use a test copy with the
+   normal SSID. Insert this block after the first `now = millis()` in the
+   runNetwork loop. Between 45 and 65 simulated seconds, change the DHT22
+   and verify local control. After 65 seconds, verify reconnect and telemetry.
+
+if (now >= 45000 && now < 65000) {
+    if (WiFi.status() == WL_CONNECTED)
+        WiFi.disconnect();
+    vTaskDelay(pdMS_TO_TICKS(100));
+    continue;
+}
+
+Restore the backend defaults after testing by repeating the PUT with
+fanOnTemperature=26 and fanOffTemperature=25.

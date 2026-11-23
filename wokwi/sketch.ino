@@ -1,8 +1,16 @@
-#include <Wire.h>
-#include <math.h>
-#include "DHTesp.h"
+#include <Arduino.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <ArduinoJson.h>
+#include <DHTesp.h>
+#include <HTTPClient.h>
+#include <StreamString.h>
+#include <WiFi.h>
+#include <Wire.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+#include <freertos/task.h>
+#include "environment-control.h"
 
 constexpr int DHT_PIN = 15;
 constexpr int LDR_PIN = 34;
@@ -16,24 +24,43 @@ constexpr int SCREEN_HEIGHT = 64;
 constexpr int OLED_RESET = -1;
 constexpr int OLED_ADDRESS = 0x3C;
 
-Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-DHTesp dht;
-
-float fanOnTemperature = 26.0;
-float fanOffTemperature = 25.0;
-float fanOnHumidity = 70.0;
-float fanOffHumidity = 65.0;
-
-float temperatureAlarm = 30.0;
-float humidityAlarm = 80.0;
-
 constexpr float LDR_GAMMA = 0.7;
 constexpr float LDR_RL10 = 50.0;
 constexpr float ADC_MAX = 4095.0;
 constexpr float ADC_VOLTAGE = 3.3;
 
+constexpr char WIFI_SSID[] = "Wokwi-GUEST";
+constexpr char WIFI_PASSWORD[] = "";
+constexpr int WIFI_CHANNEL = 6;
+constexpr char BACKEND_URL[] = "http://host.wokwi.internal:5054";
+constexpr char DEVICE_ID[] = "museum-storage-01";
+constexpr uint32_t SENSOR_INTERVAL_MS = 2000;
+constexpr uint32_t TELEMETRY_INTERVAL_MS = 10000;
+constexpr uint32_t SETTINGS_INTERVAL_MS = 30000;
+constexpr uint32_t WIFI_RECONNECT_INTERVAL_MS = 10000;
+constexpr uint16_t HTTP_TIMEOUT_MS = 2500;
+
+struct SensorReading
+{
+    float temperature;
+    float humidity;
+    float lux;
+    bool fanEnabled;
+    bool alarmEnabled;
+    bool valid;
+};
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+DHTesp dht;
+EnvironmentSettings environmentSettings = DEFAULT_ENVIRONMENT_SETTINGS;
+bool displayReady = false;
 bool fanEnabled = false;
 bool alarmEnabled = false;
+QueueHandle_t settingsQueue = nullptr;
+QueueHandle_t readingsQueue = nullptr;
+
+void updateDisplay(const SensorReading& reading);
+void sendSensorReading(const SensorReading& reading);
 
 void setFan(bool enabled)
 {
@@ -47,7 +74,6 @@ void setAlarm(bool enabled)
         return;
 
     alarmEnabled = enabled;
-
     if (enabled) {
         tone(BUZZER_PIN, 1000);
         Serial.println("ALARM activated");
@@ -59,49 +85,35 @@ void setAlarm(bool enabled)
 
 void updateFan(float temperature, float humidity)
 {
-    bool shouldTurnOn = temperature >= fanOnTemperature || humidity >= fanOnHumidity;
-    bool canTurnOff = temperature <= fanOffTemperature && humidity <= fanOffHumidity;
-
-    if (!fanEnabled && shouldTurnOn) {
-        setFan(true);
-        Serial.println("Fan turned ON");
-    } else if (fanEnabled && canTurnOff) {
-        setFan(false);
-        Serial.println("Fan turned OFF");
+    bool enabled = nextFanState(environmentSettings, fanEnabled, temperature, humidity);
+    if (enabled != fanEnabled) {
+        setFan(enabled);
+        Serial.println(enabled ? "Fan turned ON" : "Fan turned OFF");
     }
 }
 
 void updateAlarm(float temperature, float humidity)
 {
-    bool shouldAlarm = temperature >= temperatureAlarm || humidity >= humidityAlarm;
-    setAlarm(shouldAlarm);
+    setAlarm(shouldAlarm(environmentSettings, temperature, humidity));
 }
 
 float readLux()
 {
     int rawValue = analogRead(LDR_PIN);
-
     if (rawValue <= 0)
         return 100000.0;
-
     if (rawValue >= 4095)
         return 0.0;
 
     float voltage = rawValue / ADC_MAX * ADC_VOLTAGE;
     float resistance = 10000.0 * voltage / (ADC_VOLTAGE - voltage);
-
-    float lux = pow(
-        LDR_RL10 * 1000.0 * pow(10.0, LDR_GAMMA) / resistance,
-        1.0 / LDR_GAMMA
-    );
-
+    float lux = pow(LDR_RL10 * 1000.0 * pow(10.0, LDR_GAMMA) / resistance, 1.0 / LDR_GAMMA);
     if (!isfinite(lux))
         return 0.0;
-
     return lux;
 }
 
-void updateDisplay(float temperature, float humidity, float lux)
+void updateDisplay(const SensorReading& reading)
 {
     display.clearDisplay();
     display.setTextColor(SSD1306_WHITE);
@@ -110,71 +122,195 @@ void updateDisplay(float temperature, float humidity, float lux)
 
     display.setCursor(0, 0);
     display.print("Museum Storage");
-
     display.setCursor(0, 14);
     display.print("Temp: ");
-    display.print(temperature, 1);
+    if (reading.valid)
+        display.print(reading.temperature, 1);
+    else
+        display.print("--");
     display.print(" C");
 
     display.setCursor(0, 26);
     display.print("Hum:  ");
-    display.print(humidity, 1);
+    if (reading.valid)
+        display.print(reading.humidity, 1);
+    else
+        display.print("--");
     display.print(" %");
 
     display.setCursor(0, 38);
     display.print("Light: ");
-
-    if (lux > 99999)
+    if (reading.lux > 99999)
         display.print(">99999");
     else
-        display.print(lux, 0);
-
+        display.print(reading.lux, 0);
     display.print(" lx");
 
     display.setCursor(0, 50);
     display.print("Fan: ");
-    display.print(fanEnabled ? "ON" : "OFF");
-
+    display.print(reading.fanEnabled ? "ON" : "OFF");
     display.setCursor(64, 50);
     display.print("Alarm:");
-    display.print(alarmEnabled ? "ON" : "OK");
-
+    display.print(reading.alarmEnabled ? "ON" : "OK");
     display.display();
 }
 
-void printStatus(float temperature, float humidity, float lux)
+void updateEnvironment()
 {
-    Serial.println("--------------------------------");
+    if (settingsQueue && xQueueReceive(settingsQueue, &environmentSettings, 0) == pdPASS)
+        Serial.println("Environment settings applied");
 
-    Serial.print("Temperature: ");
-    Serial.print(temperature, 1);
-    Serial.println(" C");
+    TempAndHumidity data = dht.getTempAndHumidity();
+    bool valid = isfinite(data.temperature) && isfinite(data.humidity);
+    if (valid) {
+        updateFan(data.temperature, data.humidity);
+        updateAlarm(data.temperature, data.humidity);
+    } else {
+        Serial.println("DHT22 read failed");
+    }
 
-    Serial.print("Humidity:    ");
-    Serial.print(humidity, 1);
-    Serial.println(" %");
+    SensorReading reading{data.temperature, data.humidity, readLux(), fanEnabled, alarmEnabled, valid};
+    if (displayReady)
+        updateDisplay(reading);
+    if (readingsQueue)
+        xQueueOverwrite(readingsQueue, &reading);
+}
 
-    Serial.print("Light:       ");
-    Serial.print(lux, 0);
-    Serial.println(" lx");
+bool beginRequest(HTTPClient& http, WiFiClient& client, const char* path)
+{
+    http.setConnectTimeout(HTTP_TIMEOUT_MS);
+    http.setTimeout(HTTP_TIMEOUT_MS);
+    http.setReuse(false);
+    return http.begin(client, String(BACKEND_URL) + path);
+}
 
-    Serial.print("Fan:         ");
-    Serial.println(fanEnabled ? "ON" : "OFF");
+void sendSensorReading(const SensorReading& reading)
+{
+    JsonDocument json;
+    json["deviceId"] = DEVICE_ID;
+    json["temperature"] = reading.temperature;
+    json["humidity"] = reading.humidity;
+    json["lightLevel"] = reading.lux;
+    json["fanEnabled"] = reading.fanEnabled;
+    json["alarmEnabled"] = reading.alarmEnabled;
+    String body;
+    serializeJson(json, body);
 
-    Serial.print("Alarm:       ");
-    Serial.println(alarmEnabled ? "ON" : "OFF");
+    WiFiClient client;
+    HTTPClient http;
+    if (!beginRequest(http, client, "/api/sensor-readings")) {
+        Serial.println("Telemetry POST could not start");
+        return;
+    }
+    http.addHeader("Content-Type", "application/json");
+    int status = http.POST(body);
+    http.end();
+    if (status >= 200 && status < 300)
+        Serial.println("Telemetry sent");
+    else
+        Serial.printf("Telemetry POST failed (%d)\n", status);
+}
 
-    Serial.print("Fan ON limits:  ");
-    Serial.print(fanOnTemperature);
-    Serial.print(" C / ");
-    Serial.print(fanOnHumidity);
-    Serial.println(" %");
+double readThreshold(JsonVariantConst value)
+{
+    return value.is<double>() ? value.as<double>() : NAN;
+}
 
-    Serial.print("Fan OFF limits: ");
-    Serial.print(fanOffTemperature);
-    Serial.print(" C / ");
-    Serial.print(fanOffHumidity);
-    Serial.println(" %");
+void fetchEnvironmentSettings()
+{
+    WiFiClient client;
+    HTTPClient http;
+    if (!beginRequest(http, client, "/api/environment-settings")) {
+        Serial.println("Settings GET could not start");
+        return;
+    }
+    int status = http.GET();
+    if (status != HTTP_CODE_OK) {
+        Serial.printf("Settings GET failed (%d)\n", status);
+        http.end();
+        return;
+    }
+
+    StreamString body;
+    int bytesRead = http.writeToStream(&body);
+    http.end();
+    if (bytesRead < 0) {
+        Serial.printf("Settings response read failed (%d)\n", bytesRead);
+        return;
+    }
+
+    JsonDocument json;
+    if (deserializeJson(json, body.c_str(), body.length())) {
+        Serial.println("Settings JSON could not be parsed");
+        return;
+    }
+    EnvironmentSettings candidate{
+        readThreshold(json["fanOnTemperature"]),
+        readThreshold(json["fanOffTemperature"]),
+        readThreshold(json["fanOnHumidity"]),
+        readThreshold(json["fanOffHumidity"]),
+        readThreshold(json["temperatureAlarm"]),
+        readThreshold(json["humidityAlarm"])
+    };
+    if (!validateEnvironmentSettings(candidate)) {
+        Serial.println("Invalid environment settings");
+        return;
+    }
+    xQueueOverwrite(settingsQueue, &candidate);
+}
+
+void runNetwork(void*)
+{
+    WiFi.mode(WIFI_STA);
+    WiFi.setAutoReconnect(false);
+    uint32_t lastWiFiAttempt = millis() - WIFI_RECONNECT_INTERVAL_MS;
+    uint32_t lastTelemetry = millis() - TELEMETRY_INTERVAL_MS;
+    uint32_t lastSettingsFetch = millis() - SETTINGS_INTERVAL_MS;
+    bool wasConnected = false;
+
+    for (;;) {
+        uint32_t now = millis();
+        bool connected = WiFi.status() == WL_CONNECTED;
+        if (connected != wasConnected)
+            Serial.println(connected ? "Wi-Fi connected" : "Wi-Fi disconnected");
+        wasConnected = connected;
+
+        if (!connected && now - lastWiFiAttempt >= WIFI_RECONNECT_INTERVAL_MS) {
+            lastWiFiAttempt = now;
+            Serial.println("Connecting to Wi-Fi");
+            WiFi.begin(WIFI_SSID, WIFI_PASSWORD, WIFI_CHANNEL);
+        }
+        if (connected && now - lastSettingsFetch >= SETTINGS_INTERVAL_MS) {
+            lastSettingsFetch = now;
+            fetchEnvironmentSettings();
+        }
+        now = millis();
+        if (WiFi.status() == WL_CONNECTED && now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
+            SensorReading reading;
+            if (xQueuePeek(readingsQueue, &reading, 0) == pdPASS && reading.valid) {
+                lastTelemetry = now;
+                sendSensorReading(reading);
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+void startNetwork()
+{
+    // Keep only the latest settings and sensor sample across the two tasks.
+    settingsQueue = xQueueCreate(1, sizeof(EnvironmentSettings));
+    readingsQueue = xQueueCreate(1, sizeof(SensorReading));
+    if (settingsQueue && readingsQueue && xTaskCreate(runNetwork, "network", 8192, nullptr, 1, nullptr) == pdPASS)
+        return;
+
+    if (settingsQueue)
+        vQueueDelete(settingsQueue);
+    if (readingsQueue)
+        vQueueDelete(readingsQueue);
+    settingsQueue = nullptr;
+    readingsQueue = nullptr;
+    Serial.println("Network task could not start");
 }
 
 void setup()
@@ -184,60 +320,26 @@ void setup()
     pinMode(RELAY_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
     pinMode(LDR_PIN, INPUT);
-
     setFan(false);
     noTone(BUZZER_PIN);
 
     analogReadResolution(12);
-
     dht.setup(DHT_PIN, DHTesp::DHT22);
 
     Wire.begin(OLED_SDA, OLED_SCL);
-
-    if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS)) {
-        Serial.println("OLED initialization failed!");
-
-        while (true)
-            delay(1000);
-    }
-
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-    display.setTextSize(1);
-
-    display.setCursor(0, 0);
-    display.println("Museum Storage");
-
-    display.setCursor(0, 16);
-    display.println("System starting...");
-
-    display.display();
-
+    displayReady = display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDRESS);
+    if (!displayReady)
+        Serial.println("OLED initialization failed");
     Serial.println("Museum Storage System");
-    Serial.println("Initialization complete");
-
-    delay(1500);
+    startNetwork();
 }
 
 void loop()
 {
-    TempAndHumidity data = dht.getTempAndHumidity();
-
-    float temperature = data.temperature;
-    float humidity = data.humidity;
-
-    if (isnan(temperature) || isnan(humidity)) {
-        Serial.println("DHT22 read failed!");
-        delay(2000);
-        return;
+    static uint32_t lastSensorUpdate = millis() - SENSOR_INTERVAL_MS;
+    if (millis() - lastSensorUpdate >= SENSOR_INTERVAL_MS) {
+        updateEnvironment();
+        lastSensorUpdate = millis();
     }
-
-    float lux = readLux();
-
-    updateFan(temperature, humidity);
-    updateAlarm(temperature, humidity);
-    updateDisplay(temperature, humidity, lux);
-    printStatus(temperature, humidity, lux);
-
-    delay(2000);
+    delay(10);
 }
