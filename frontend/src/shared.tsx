@@ -37,18 +37,18 @@ export function ErrorNotice({ message, retry }: { message: string; retry?: () =>
   return (
     <div className="notice notice-error" role="alert">
       <span>{message}</span>
-      {retry && <button className="button" type="button" onClick={retry}>Retry</button>}
+      {retry && <button className="button" type="button" onClick={retry}>Bandyti dar kartą</button>}
     </div>
   );
 }
 
 export function LoadNotice({ error, loading, retry }: { error: unknown; loading: boolean; retry: () => void }) {
-  if (error) return <ErrorNotice message={errorMessage(error, "Could not load this page.")} retry={retry} />;
-  if (loading) return <p className="state-text" role="status">Loading...</p>;
+  if (error) return <ErrorNotice message={errorMessage(error, "Nepavyko įkelti puslapio.")} retry={retry} />;
+  if (loading) return <p className="state-text" role="status">Įkeliama…</p>;
   return null;
 }
 
-const localTimestamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
+const localTimestamp = new Intl.DateTimeFormat("lt-LT", { dateStyle: "medium", timeStyle: "short" });
 export function formatTimestamp(value: string): string {
   const utc = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`;
   return localTimestamp.format(new Date(utc));

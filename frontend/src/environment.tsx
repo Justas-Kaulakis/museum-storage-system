@@ -8,10 +8,18 @@ const settingsPath = "/environment-settings";
 const measurementFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 type ThresholdField = keyof EnvironmentSettings;
 const thresholdRows: { label: string; temperature: ThresholdField; humidity: ThresholdField }[] = [
-  { label: "Fan on", temperature: "fanOnTemperature", humidity: "fanOnHumidity" },
-  { label: "Fan off", temperature: "fanOffTemperature", humidity: "fanOffHumidity" },
-  { label: "Alarm", temperature: "temperatureAlarm", humidity: "humidityAlarm" },
+  { label: "Ventiliatoriaus įjungimas", temperature: "fanOnTemperature", humidity: "fanOnHumidity" },
+  { label: "Ventiliatoriaus išjungimas", temperature: "fanOffTemperature", humidity: "fanOffHumidity" },
+  { label: "Aliarmas", temperature: "temperatureAlarm", humidity: "humidityAlarm" },
 ];
+const thresholdLabels: Record<ThresholdField, string> = {
+  fanOnTemperature: "Ventiliatoriaus įjungimo temperatūra",
+  fanOffTemperature: "Ventiliatoriaus išjungimo temperatūra",
+  fanOnHumidity: "Ventiliatoriaus įjungimo drėgmė",
+  fanOffHumidity: "Ventiliatoriaus išjungimo drėgmė",
+  temperatureAlarm: "Temperatūros aliarmo riba",
+  humidityAlarm: "Drėgmės aliarmo riba",
+};
 
 async function loadEnvironment(signal: AbortSignal) {
   const [readings, settings] = await Promise.all([
@@ -30,9 +38,9 @@ export function EnvironmentPage() {
   const reading = data?.reading;
   const settings = data?.settings;
   const measurements = [
-    { label: "Temperature", value: reading?.temperature, unit: "°C" },
-    { label: "Humidity", value: reading?.humidity, unit: "%" },
-    { label: "Light level", value: reading?.lightLevel, unit: "lx" },
+    { label: "Temperatūra", value: reading?.temperature, unit: "°C" },
+    { label: "Drėgmė", value: reading?.humidity, unit: "%" },
+    { label: "Apšvietimas", value: reading?.lightLevel, unit: "lx" },
   ];
 
   function updateField(field: ThresholdField, value: string) {
@@ -64,7 +72,7 @@ export function EnvironmentPage() {
       setEdits({});
       setSaved(true);
     } catch (failure) {
-      setSaveError(errorMessage(failure, "Could not save the thresholds."));
+      setSaveError(errorMessage(failure, "Nepavyko išsaugoti ribinių reikšmių."));
     } finally {
       setSaving(false);
     }
@@ -73,17 +81,17 @@ export function EnvironmentPage() {
   return (
     <>
       <header className="page-heading">
-        <h1>Environment</h1>
-        <button className="button" onClick={refresh} disabled={loading || saving}>Refresh</button>
+        <h1>Aplinkos stebėjimas</h1>
+        <button className="button" onClick={refresh} disabled={loading || saving}>Atnaujinti</button>
       </header>
       <LoadNotice error={error} loading={loading} retry={refresh} />
 
       <section className="panel" aria-labelledby="current-heading">
         <div className="panel-heading">
-          <h2 id="current-heading">Current environment</h2>
-          {reading && <p className="report-time">Last reading <time dateTime={reading.createdAt}>{formatTimestamp(reading.createdAt)}</time></p>}
+          <h2 id="current-heading">Dabartiniai rodmenys</h2>
+          {reading && <p className="report-time">Paskutinis matavimas <time dateTime={reading.createdAt}>{formatTimestamp(reading.createdAt)}</time></p>}
         </div>
-        {!reading && data && <p className="state-text panel-message">Waiting for the first sensor reading.</p>}
+        {!reading && data && <p className="state-text panel-message">Laukiama pirmųjų jutiklių rodmenų.</p>}
         <dl className="measurement-grid">
           {measurements.map(({ label, value, unit }) => (
             <div key={label} className="measurement">
@@ -94,28 +102,28 @@ export function EnvironmentPage() {
         </dl>
         <dl className="device-states">
           <div>
-            <dt>Fan</dt>
+            <dt>Ventiliatorius</dt>
             <dd>
-              {reading ? <span className={reading.fanEnabled ? "badge badge-active" : "badge badge-neutral"}>{reading.fanEnabled ? "On" : "Off"}</span> : "—"}
+              {reading ? <span className={reading.fanEnabled ? "badge badge-active" : "badge badge-neutral"}>{reading.fanEnabled ? "Įjungtas" : "Išjungtas"}</span> : "—"}
             </dd>
           </div>
           <div>
-            <dt>Alarm</dt>
+            <dt>Aliarmas</dt>
             <dd>
-              {reading ? <span className={reading.alarmEnabled ? "badge badge-alarm" : "badge badge-good"}>{reading.alarmEnabled ? "Active" : "Normal"}</span> : "—"}
+              {reading ? <span className={reading.alarmEnabled ? "badge badge-alarm" : "badge badge-good"}>{reading.alarmEnabled ? "Suveikęs" : "Normali būsena"}</span> : "—"}
             </dd>
           </div>
-          {reading && <div className="device-id"><dt>Device</dt><dd className="code">{reading.deviceId}</dd></div>}
+          {reading && <div className="device-id"><dt>Įrenginys</dt><dd className="code">{reading.deviceId}</dd></div>}
         </dl>
       </section>
 
       <section className="panel" aria-labelledby="thresholds-heading">
         <div className="panel-heading">
-          <h2 id="thresholds-heading">Environmental thresholds</h2>
+          <h2 id="thresholds-heading">Ribinės reikšmės</h2>
         </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th scope="col">Threshold</th><th scope="col">Temperature (°C)</th><th scope="col">Humidity (%)</th></tr></thead>
+            <thead><tr><th scope="col">Ribinė reikšmė</th><th scope="col">Temperatūra (°C)</th><th scope="col">Drėgmė (%)</th></tr></thead>
             <tbody>
               {thresholdRows.map(({ label, temperature, humidity }) => (
                 <tr key={label}>
@@ -130,7 +138,7 @@ export function EnvironmentPage() {
       </section>
       {settings && (
         <section className="panel" aria-labelledby="threshold-form-heading">
-          <div className="panel-heading"><h2 id="threshold-form-heading">Edit thresholds</h2></div>
+          <div className="panel-heading"><h2 id="threshold-form-heading">Aplinkos nustatymai</h2></div>
           <form className="form-body" onSubmit={save}>
             {saveError && <ErrorNotice message={saveError} />}
             <fieldset disabled={saving || loading}>
@@ -138,18 +146,18 @@ export function EnvironmentPage() {
                 <div key={label} className="threshold-row">
                   <h3>{label}</h3>
                   <label>
-                    Temperature (°C)
-                    <input name={temperature} aria-label={`${label} temperature (°C)`} type="number" step="any" required value={edits[temperature] ?? settings[temperature]} onChange={(event) => updateField(temperature, event.target.value)} />
+                    {thresholdLabels[temperature]} (°C)
+                    <input name={temperature} aria-label={`${thresholdLabels[temperature]} (°C)`} type="number" step="any" required value={edits[temperature] ?? settings[temperature]} onChange={(event) => updateField(temperature, event.target.value)} />
                   </label>
                   <label>
-                    Humidity (%)
-                    <input name={humidity} aria-label={`${label} humidity (%)`} type="number" step="any" required value={edits[humidity] ?? settings[humidity]} onChange={(event) => updateField(humidity, event.target.value)} />
+                    {thresholdLabels[humidity]} (%)
+                    <input name={humidity} aria-label={`${thresholdLabels[humidity]} (%)`} type="number" step="any" required value={edits[humidity] ?? settings[humidity]} onChange={(event) => updateField(humidity, event.target.value)} />
                   </label>
                 </div>
               ))}
               <div className="form-actions">
-                <button className="button primary" type="submit">{saving ? "Saving..." : "Save thresholds"}</button>
-                {saved && <span className="success-text" role="status">Thresholds saved.</span>}
+                <button className="button primary" type="submit">{saving ? "Išsaugoma…" : "Išsaugoti"}</button>
+                {saved && <span className="success-text" role="status">Ribinės reikšmės išsaugotos.</span>}
               </div>
             </fieldset>
           </form>

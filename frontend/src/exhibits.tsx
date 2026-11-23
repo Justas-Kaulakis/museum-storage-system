@@ -32,11 +32,11 @@ export function RegistryPage() {
   return (
     <>
       <header className="page-heading">
-        <h1>Registry</h1>
+        <h1>Eksponatų registras</h1>
         <div className="button-group">
-          <button className="button" aria-expanded={panel === "scan"} onClick={() => setPanel(panel === "scan" ? null : "scan")}>Scan QR</button>
+          <button className="button" aria-expanded={panel === "scan"} onClick={() => setPanel(panel === "scan" ? null : "scan")}>Nuskaityti QR kodą</button>
           <button className="button primary" aria-expanded={panel === "create"} disabled={!data}
-            onClick={() => setPanel(panel === "create" ? null : "create")}>New exhibit</button>
+            onClick={() => setPanel(panel === "create" ? null : "create")}>Naujas eksponatas</button>
         </div>
       </header>
       <LoadNotice error={error} loading={loading} retry={refresh} />
@@ -45,10 +45,10 @@ export function RegistryPage() {
 
       {exhibits && (
         <section className="panel" aria-labelledby="exhibits-heading">
-          <div className="panel-heading"><h2 id="exhibits-heading">Exhibits</h2></div>
+          <div className="panel-heading"><h2 id="exhibits-heading">Eksponatai</h2></div>
           <div className="table-wrap">
             <table className="exhibit-table">
-              <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Category</th><th scope="col">Status</th><th scope="col">Storage location</th></tr></thead>
+              <thead><tr><th scope="col">Kodas</th><th scope="col">Pavadinimas</th><th scope="col">Kategorija</th><th scope="col">Būsena</th><th scope="col">Saugojimo vieta</th></tr></thead>
               <tbody>
                 {exhibits.map((exhibit) => (
                   <tr key={exhibit.id}>
@@ -59,7 +59,7 @@ export function RegistryPage() {
                     <td><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></td>
                   </tr>
                 ))}
-                {exhibits.length === 0 && <tr><td className="empty-cell" colSpan={5}>No exhibits have been registered.</td></tr>}
+                {exhibits.length === 0 && <tr><td className="empty-cell" colSpan={5}>Eksponatų dar neužregistruota.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -98,10 +98,10 @@ function StorageLocationsSection({ locations, onCreated }: {
         name: fields.get("name"),
       }));
       setShowForm(false);
-      setNotice(`${created.name} was created.`);
+      setNotice(`Sukurta saugojimo vieta „${created.name}“.`);
       onCreated();
     } catch (failure) {
-      setError(errorMessage(failure, "Could not create the storage location."));
+      setError(errorMessage(failure, "Nepavyko sukurti saugojimo vietos."));
     } finally {
       setSaving(false);
     }
@@ -110,20 +110,20 @@ function StorageLocationsSection({ locations, onCreated }: {
   return (
     <section id="storage-locations" className="panel" aria-labelledby="locations-heading">
       <div className="panel-heading">
-        <h2 id="locations-heading">Storage locations</h2>
+        <h2 id="locations-heading">Saugojimo vietos</h2>
         <button className="button primary" aria-expanded={showForm} disabled={saving} onClick={toggleForm}>
-          {showForm ? "Cancel" : "New location"}
+          {showForm ? "Atšaukti" : "Nauja saugojimo vieta"}
         </button>
       </div>
       {locations && (
         <div className="table-wrap">
           <table>
-            <thead><tr><th scope="col">Code</th><th scope="col">Name</th></tr></thead>
+            <thead><tr><th scope="col">Kodas</th><th scope="col">Pavadinimas</th></tr></thead>
             <tbody>
               {locations.map((location) => (
                 <tr key={location.id}><th scope="row" className="code">{location.code}</th><td>{location.name}</td></tr>
               ))}
-              {locations.length === 0 && <tr><td colSpan={2} className="empty-cell">No storage locations have been registered.</td></tr>}
+              {locations.length === 0 && <tr><td colSpan={2} className="empty-cell">Saugojimo vietų dar neužregistruota.</td></tr>}
             </tbody>
           </table>
         </div>
@@ -134,11 +134,11 @@ function StorageLocationsSection({ locations, onCreated }: {
           {error && <ErrorNotice message={error} />}
           <fieldset disabled={saving}>
             <div className="field-grid">
-              <label>Code<input name="code" required placeholder="SHELF-A1" /></label>
-              <label>Name<input name="name" required /></label>
+              <label>Kodas<input name="code" required placeholder="SHELF-A1" /></label>
+              <label>Pavadinimas<input name="name" required /></label>
             </div>
             <div className="form-actions">
-              <button className="button primary" type="submit">{saving ? "Creating..." : "Create location"}</button>
+              <button className="button primary" type="submit">{saving ? "Kuriama…" : "Sukurti"}</button>
             </div>
           </fieldset>
         </form>
@@ -173,7 +173,7 @@ function CreateExhibitForm({ locations }: { locations: StorageLocation[] }) {
       const created = await apiFetch<Exhibit>(exhibitsPath, jsonRequest("POST", exhibit));
       navigate(`/exhibits/${created.id}`);
     } catch (failure) {
-      setError(errorMessage(failure, "Could not create the exhibit."));
+      setError(errorMessage(failure, "Nepavyko sukurti eksponato."));
     } finally {
       setSaving(false);
     }
@@ -181,31 +181,31 @@ function CreateExhibitForm({ locations }: { locations: StorageLocation[] }) {
 
   return (
     <section className="panel" aria-labelledby="create-heading">
-      <div className="panel-heading"><h2 id="create-heading">New exhibit</h2></div>
+      <div className="panel-heading"><h2 id="create-heading">Naujas eksponatas</h2></div>
       <form className="form-body" onSubmit={submit}>
         {error && <ErrorNotice message={error} />}
         <fieldset disabled={saving}>
           <div className="field-grid">
-            <label>Code<input name="code" placeholder="EXHIBIT-0001" required /></label>
-            <label>Name<input name="name" required /></label>
-            <label>Category<input name="category" /></label>
+            <label>Kodas<input name="code" placeholder="EXHIBIT-0001" required /></label>
+            <label>Pavadinimas<input name="name" required /></label>
+            <label>Kategorija<input name="category" /></label>
             <label>
-              Status
+              Būsena
               <select value={status} onChange={(event) => setStatus(event.target.value as ExhibitStatus)}>
-                <option value="CheckedOut">Checked out</option>
-                <option value="Stored">Stored</option>
+                <option value="CheckedOut">Paimtas iš saugyklos</option>
+                <option value="Stored">Saugykloje</option>
               </select>
             </label>
             {status === "Stored" && (
               <label>
-                Storage location
+                Saugojimo vieta
                 <LocationSelect value={location} locations={locations} onChange={setLocation} />
               </label>
             )}
-            <label className="full-width">Description<textarea name="description" rows={3} /></label>
+            <label className="full-width">Aprašymas<textarea name="description" rows={3} /></label>
           </div>
-          {needsLocation && <p className="state-text"><Link to={storageLocationsLink}>Create a storage location</Link> to register this exhibit as stored.</p>}
-          <div className="form-actions"><button className="button primary" disabled={needsLocation} type="submit">{saving ? "Creating..." : "Create exhibit"}</button></div>
+          {needsLocation && <p className="state-text"><Link to={storageLocationsLink}>Sukurkite saugojimo vietą</Link>, kad galėtumėte užregistruoti eksponatą kaip esantį saugykloje.</p>}
+          <div className="form-actions"><button className="button primary" disabled={needsLocation} type="submit">{saving ? "Kuriama…" : "Sukurti"}</button></div>
         </fieldset>
       </form>
     </section>
@@ -228,8 +228,8 @@ function ScanQrForm() {
       navigate(`/exhibits/${exhibit.id}`);
     } catch (failure) {
       setError(failure instanceof ApiError && failure.status === 404
-        ? "No exhibit matches the code in this image."
-        : errorMessage(failure, "Could not scan the QR image."));
+        ? "Eksponatas pagal nuotraukoje esantį QR kodą nerastas."
+        : errorMessage(failure, "Nepavyko nuskaityti QR kodo iš nuotraukos."));
     } finally {
       setScanning(false);
     }
@@ -237,12 +237,12 @@ function ScanQrForm() {
 
   return (
     <section className="panel" aria-labelledby="scan-heading">
-      <div className="panel-heading"><h2 id="scan-heading">Scan a QR image</h2></div>
+      <div className="panel-heading"><h2 id="scan-heading">Įkelti QR kodo nuotrauką</h2></div>
       <form className="form-body" onSubmit={scan}>
         {error && <ErrorNotice message={error} />}
         <fieldset className="inline-form" disabled={scanning}>
-          <label>QR image (PNG or JPEG)<input type="file" name="file" accept="image/png,image/jpeg" required /></label>
-          <button className="button primary" type="submit">{scanning ? "Scanning..." : "Find exhibit"}</button>
+          <label>Pasirinkti nuotrauką (PNG arba JPEG)<input type="file" name="file" accept="image/png,image/jpeg" required /></label>
+          <button className="button primary" type="submit">{scanning ? "Nuskaitoma…" : "Rasti eksponatą"}</button>
         </fieldset>
       </form>
     </section>
@@ -250,12 +250,12 @@ function ScanQrForm() {
 }
 
 const actions = {
-  "check-in": { label: "Check in", success: "Exhibit checked in." },
-  "check-out": { label: "Check out", success: "Exhibit checked out." },
-  move: { label: "Move", success: "Exhibit moved." },
+  "check-in": { label: "Padėti į saugyklą", success: "Eksponatas padėtas į saugyklą." },
+  "check-out": { label: "Paimti iš saugyklos", success: "Eksponatas paimtas iš saugyklos." },
+  move: { label: "Perkelti", success: "Eksponatas perkeltas." },
 } as const;
 type ExhibitAction = keyof typeof actions;
-const operationLabels = { CheckIn: "Check in", CheckOut: "Check out", Move: "Move" };
+const operationLabels = { CheckIn: "Padėti į saugyklą", CheckOut: "Paimti iš saugyklos", Move: "Perkelti" };
 
 export function ExhibitDetail({ id }: { id: string }) {
   const path = `${exhibitsPath}/${id}`;
@@ -287,7 +287,7 @@ export function ExhibitDetail({ id }: { id: string }) {
       setNotice(actions[action].success);
       refresh();
     } catch (failure) {
-      setActionError(errorMessage(failure, "The storage operation failed."));
+      setActionError(errorMessage(failure, "Nepavyko atlikti saugojimo operacijos."));
       if (failure instanceof ApiError && failure.status === 409) {
         setLocation("");
         refresh();
@@ -299,30 +299,30 @@ export function ExhibitDetail({ id }: { id: string }) {
 
   return (
     <>
-      <Link className="back-link" to="/exhibits">Registry</Link>
+      <Link className="back-link" to="/exhibits">Grįžti į eksponatų registrą</Link>
       <header className="page-heading detail-heading">
         <div>
-          <h1>{missing ? "Exhibit not found" : exhibit?.name ?? "Exhibit details"}</h1>
+          <h1>{missing ? "Eksponatas nerastas" : exhibit?.name ?? "Eksponato informacija"}</h1>
           {exhibit && !missing && <p className="code exhibit-code">{exhibit.code}</p>}
         </div>
         <div className="button-group">
           {exhibit && !missing && <StatusBadge status={exhibit.status} />}
-          {!missing && <button className="button" disabled={loading || Boolean(working)} onClick={refresh}>Refresh</button>}
+          {!missing && <button className="button" disabled={loading || Boolean(working)} onClick={refresh}>Atnaujinti</button>}
         </div>
       </header>
       {!missing && <LoadNotice error={error} loading={loading} retry={refresh} />}
       {data && exhibit && !missing && (
         <>
           <section className="panel" aria-labelledby="details-heading">
-            <div className="panel-heading"><h2 id="details-heading">Exhibit record</h2></div>
+            <div className="panel-heading"><h2 id="details-heading">Eksponato duomenys</h2></div>
             <dl className="fact-grid">
-              <div><dt>Category</dt><dd>{exhibit.category || "—"}</dd></div>
-              <div><dt>Storage location</dt><dd><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></dd></div>
-              <div className="full-width"><dt>Description</dt><dd className="description">{exhibit.description || "—"}</dd></div>
+              <div><dt>Kategorija</dt><dd>{exhibit.category || "—"}</dd></div>
+              <div><dt>Dabartinė saugojimo vieta</dt><dd><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></dd></div>
+              <div className="full-width"><dt>Aprašymas</dt><dd className="description">{exhibit.description || "—"}</dd></div>
             </dl>
           </section>
           <section className="panel" aria-labelledby="actions-heading">
-            <div className="panel-heading"><h2 id="actions-heading">Storage actions</h2></div>
+            <div className="panel-heading"><h2 id="actions-heading">Saugojimo operacijos</h2></div>
             <form className="form-body" onSubmit={(event) => { event.preventDefault(); void apply(assignmentAction); }}>
               {notice && <p className="notice notice-success" role="status">{notice}</p>}
               {actionError && <ErrorNotice message={actionError} />}
@@ -330,25 +330,25 @@ export function ExhibitDetail({ id }: { id: string }) {
                 {locations.length > 0 ? (
                   <>
                     <label>
-                      Destination
+                      Paskirties saugojimo vieta
                       <LocationSelect value={location} locations={locations} onChange={setLocation} />
                     </label>
-                    <button className="button primary" type="submit">{working === assignmentAction ? "Saving..." : actions[assignmentAction].label}</button>
+                    <button className="button primary" type="submit">{working === assignmentAction ? "Išsaugoma…" : actions[assignmentAction].label}</button>
                   </>
                 ) : (
                   <p className="state-text">
-                    <Link to={storageLocationsLink}>Create a storage location</Link> {isStored ? "to move this exhibit." : "to check in this exhibit."}
+                    <Link to={storageLocationsLink}>Sukurkite saugojimo vietą</Link>{isStored ? ", kad galėtumėte perkelti eksponatą." : ", kad galėtumėte padėti eksponatą į saugyklą."}
                   </p>
                 )}
-                {isStored && <button className="button" type="button" onClick={() => void apply("check-out")}>{working === "check-out" ? "Saving..." : "Check out"}</button>}
+                {isStored && <button className="button" type="button" onClick={() => void apply("check-out")}>{working === "check-out" ? "Išsaugoma…" : "Paimti iš saugyklos"}</button>}
               </fieldset>
             </form>
           </section>
           <section className="panel" aria-labelledby="history-heading">
-            <div className="panel-heading"><h2 id="history-heading">Operation history</h2></div>
+            <div className="panel-heading"><h2 id="history-heading">Operacijų istorija</h2></div>
             <div className="table-wrap">
               <table className="history-table">
-                <thead><tr><th scope="col">Operation</th><th scope="col">From</th><th scope="col">To</th><th scope="col">Timestamp</th></tr></thead>
+                <thead><tr><th scope="col">Operacija</th><th scope="col">Iš</th><th scope="col">Į</th><th scope="col">Data ir laikas</th></tr></thead>
                 <tbody>
                   {data[1].map((operation) => (
                     <tr key={operation.id}>
@@ -358,7 +358,7 @@ export function ExhibitDetail({ id }: { id: string }) {
                       <td><time dateTime={operation.createdAt}>{formatTimestamp(operation.createdAt)}</time></td>
                     </tr>
                   ))}
-                  {data[1].length === 0 && <tr><td colSpan={4} className="empty-cell">No storage operations have been recorded.</td></tr>}
+                  {data[1].length === 0 && <tr><td colSpan={4} className="empty-cell">Saugojimo operacijų dar neužregistruota.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -371,12 +371,12 @@ export function ExhibitDetail({ id }: { id: string }) {
 
 function StatusBadge({ status }: { status: ExhibitStatus }) {
   return status === "Stored"
-    ? <span className="badge badge-good">Stored</span>
-    : <span className="badge badge-neutral">Checked out</span>;
+    ? <span className="badge badge-good">Saugykloje</span>
+    : <span className="badge badge-neutral">Paimtas iš saugyklos</span>;
 }
 
 function LocationCell({ location, id }: { location: StorageLocation | null; id: number | null }) {
-  if (!location) return <span className="muted">{id === null ? "—" : `Location ${id}`}</span>;
+  if (!location) return <span className="muted">{id === null ? "—" : `Saugojimo vieta ${id}`}</span>;
   return <span className="location-value"><span className="code">{location.code}</span>{location.name}</span>;
 }
 
@@ -387,7 +387,7 @@ function LocationSelect({ value, locations, onChange }: {
 }) {
   return (
     <select value={value} required onChange={(event) => onChange(event.target.value)}>
-      <option value="">Select a location</option>
+      <option value="">Pasirinkite saugojimo vietą</option>
       {locations.map((location) => (
         <option key={location.id} value={location.id}>{location.code} · {location.name}</option>
       ))}

@@ -6,14 +6,14 @@ export class ApiError extends Error {
 }
 
 function responseMessage(status: number, problem: { errors?: Record<string, unknown> } | null) {
-  if (status >= 500) return "The API is unavailable. Check that the backend is running, then try again.";
-  if (status === 404) return "The requested record was not found.";
-  if (status === 409) return "This exhibit changed while the request was in progress. Refresh to see its current state.";
+  if (status >= 500) return "API nepasiekiama. Patikrinkite, ar veikia serveris, ir bandykite dar kartą.";
+  if (status === 404) return "Įrašas nerastas.";
+  if (status === 409) return "Vykdant užklausą eksponato duomenys pasikeitė. Atnaujinkite puslapį ir patikrinkite dabartinę būseną.";
 
   const errors = Object.values(problem?.errors ?? {}).flat().filter((message): message is string => typeof message === "string");
   if (errors.length > 0) return [...new Set(errors)].join("\n");
 
-  return status === 400 ? "The backend rejected the request. Check the submitted values." : "The request failed. Try again.";
+  return status === 400 ? "Serveris atmetė užklausą. Patikrinkite pateiktus duomenis." : "Nepavyko įvykdyti užklausos. Bandykite dar kartą.";
 }
 
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -22,7 +22,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
     response = await fetch(`/api${path}`, options);
   } catch (error) {
     if (options?.signal?.aborted) throw error;
-    throw new ApiError(0, "Could not connect to the API. Check that the backend is running, then try again.");
+    throw new ApiError(0, "Nepavyko prisijungti prie API. Patikrinkite, ar veikia serveris, ir bandykite dar kartą.");
   }
 
   if (!response.ok) {
@@ -33,7 +33,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   try {
     return await response.json() as T;
   } catch {
-    throw new ApiError(response.status, "The API returned an unreadable response.");
+    throw new ApiError(response.status, "Nepavyko perskaityti API atsakymo.");
   }
 }
 

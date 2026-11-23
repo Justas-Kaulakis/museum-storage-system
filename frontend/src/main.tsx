@@ -8,8 +8,8 @@ import "./styles.css";
 function NotFound() {
   return (
     <>
-      <h1>Page not found</h1>
-      <p><Link to="/">Return to Environment</Link></p>
+      <h1>Puslapis nerastas</h1>
+      <p><Link to="/">Grįžti į aplinkos stebėjimo puslapį</Link></p>
     </>
   );
 }
@@ -22,13 +22,13 @@ function ExhibitRoute() {
 function App() {
   return (
     <>
-      <a className="skip-link" href="#main-content">Skip to content</a>
+      <a className="skip-link" href="#main-content">Pereiti prie turinio</a>
       <header className="site-header">
         <div className="header-content">
-          <Link className="brand" to="/">Museum Storage</Link>
-          <nav aria-label="Main navigation">
-            <NavLink to="/" end>Environment</NavLink>
-            <NavLink to="/exhibits">Registry</NavLink>
+          <Link className="brand" to="/">Muziejaus saugykla</Link>
+          <nav aria-label="Pagrindinis meniu">
+            <NavLink to="/" end>Aplinkos stebėjimas</NavLink>
+            <NavLink to="/exhibits">Eksponatų registras</NavLink>
           </nav>
         </div>
       </header>
