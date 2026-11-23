@@ -64,6 +64,70 @@ public class ExhibitsController : ControllerBase
         return error is null ? Ok(ToResponse(exhibit)) : error;
     }
 
+    [HttpPost("{id:long}/check-in")]
+    public Task<ActionResult<ExhibitResponse>> CheckIn(long id, StorageOperationRequest request, CancellationToken cancellationToken) =>
+        PerformOperationAsync(id, StorageOperationType.CheckIn, request.StorageLocationId, cancellationToken);
+
+    [HttpPost("{id:long}/check-out")]
+    public Task<ActionResult<ExhibitResponse>> CheckOut(long id, CancellationToken cancellationToken) =>
+        PerformOperationAsync(id, StorageOperationType.CheckOut, null, cancellationToken);
+
+    [HttpPost("{id:long}/move")]
+    public Task<ActionResult<ExhibitResponse>> Move(long id, StorageOperationRequest request, CancellationToken cancellationToken) =>
+        PerformOperationAsync(id, StorageOperationType.Move, request.StorageLocationId, cancellationToken);
+
+    [HttpGet("{id:long}/operations")]
+    public async Task<ActionResult<IEnumerable<StorageOperationResponse>>> GetOperations(long id, CancellationToken cancellationToken)
+    {
+        if (!await _dbContext.Exhibits.AnyAsync(x => x.Id == id, cancellationToken))
+            return NotFound();
+
+        var operations = await _dbContext.StorageOperations.AsNoTracking()
+            .Where(x => x.ExhibitId == id)
+            .Include(x => x.FromStorageLocation)
+            .Include(x => x.ToStorageLocation)
+            .OrderByDescending(x => x.CreatedAt)
+            .ThenByDescending(x => x.Id)
+            .ToListAsync(cancellationToken);
+
+        return Ok(operations.Select(x => new StorageOperationResponse(
+            x.Id, x.ExhibitId, x.Type.ToString(), x.FromStorageLocationId, x.ToStorageLocationId,
+            x.CreatedAt, x.FromStorageLocation, x.ToStorageLocation)));
+    }
+
+    private async Task<ActionResult<ExhibitResponse>> PerformOperationAsync(
+        long id, StorageOperationType type, long? targetLocationId, CancellationToken cancellationToken)
+    {
+        var exhibit = await _dbContext.Exhibits.FindAsync([id], cancellationToken);
+        if (exhibit is null)
+            return NotFound();
+
+        var statusError = type switch
+        {
+            StorageOperationType.CheckIn when exhibit.Status != ExhibitStatus.CheckedOut => "Only a checked-out exhibit can be checked in.",
+            StorageOperationType.CheckOut when exhibit.Status != ExhibitStatus.Stored => "Only a stored exhibit can be checked out.",
+            StorageOperationType.Move when exhibit.Status != ExhibitStatus.Stored => "Only a stored exhibit can be moved.",
+            _ => null
+        };
+        if (statusError is not null)
+            return InvalidRequest(nameof(Exhibit.Status), statusError);
+
+        if (type == StorageOperationType.Move && exhibit.StorageLocationId == targetLocationId)
+            return InvalidRequest(nameof(Exhibit.StorageLocationId), "The target must differ from the current storage location.");
+
+        StorageLocation? location = null;
+        if (targetLocationId is long locationId)
+        {
+            location = await _dbContext.StorageLocations.FindAsync([locationId], cancellationToken);
+            if (location is null)
+                return InvalidRequest(nameof(Exhibit.StorageLocationId), "Storage location does not exist.");
+        }
+
+        ApplyStorageState(exhibit, location is null ? ExhibitStatus.CheckedOut : ExhibitStatus.Stored, location);
+        var error = await PersistAsync(exhibit, cancellationToken);
+        return error is null ? Ok(ToResponse(exhibit)) : error;
+    }
+
     private async Task<ActionResult?> SaveAsync(Exhibit exhibit, ExhibitRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Code))
@@ -101,15 +165,44 @@ public class ExhibitsController : ControllerBase
         exhibit.Name = request.Name.Trim();
         exhibit.Description = request.Description;
         exhibit.Category = request.Category;
-        exhibit.Status = status.Value;
-        exhibit.StorageLocationId = request.StorageLocationId;
-        exhibit.StorageLocation = location;
+        ApplyStorageState(exhibit, status.Value, location);
 
         if (exhibit.Id == 0)
             _dbContext.Exhibits.Add(exhibit);
         else
             _dbContext.Entry(exhibit).State = EntityState.Modified;
 
+        return await PersistAsync(exhibit, cancellationToken);
+    }
+
+    private void ApplyStorageState(Exhibit exhibit, ExhibitStatus status, StorageLocation? location)
+    {
+        var fromLocationId = exhibit.StorageLocationId;
+        var toLocationId = location?.Id;
+        if (exhibit.Id != 0 && (exhibit.Status != status || fromLocationId != toLocationId))
+        {
+            var type = (exhibit.Status, status) switch
+            {
+                (ExhibitStatus.CheckedOut, ExhibitStatus.Stored) => StorageOperationType.CheckIn,
+                (ExhibitStatus.Stored, ExhibitStatus.CheckedOut) => StorageOperationType.CheckOut,
+                _ => StorageOperationType.Move
+            };
+            _dbContext.StorageOperations.Add(new StorageOperation
+            {
+                ExhibitId = exhibit.Id,
+                Type = type,
+                FromStorageLocationId = fromLocationId,
+                ToStorageLocationId = toLocationId
+            });
+        }
+
+        exhibit.Status = status;
+        exhibit.StorageLocationId = toLocationId;
+        exhibit.StorageLocation = location;
+    }
+
+    private async Task<ActionResult?> PersistAsync(Exhibit exhibit, CancellationToken cancellationToken)
+    {
         try
         {
             await _dbContext.SaveChangesAsync(cancellationToken);
@@ -117,15 +210,22 @@ public class ExhibitsController : ControllerBase
         }
         catch (DbUpdateConcurrencyException)
         {
-            return NotFound();
+            if (await _dbContext.Entry(exhibit).GetDatabaseValuesAsync(cancellationToken) is null)
+                return NotFound();
+
+            return Conflict(new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "The exhibit's storage state changed. Reload the exhibit and retry."
+            });
         }
         catch (DbUpdateException exception) when (exception.InnerException is SqliteException { SqliteExtendedErrorCode: raw.SQLITE_CONSTRAINT_UNIQUE })
         {
-            return InvalidRequest(nameof(request.Code), "An exhibit with this code already exists.");
+            return InvalidRequest(nameof(Exhibit.Code), "An exhibit with this code already exists.");
         }
         catch (DbUpdateException exception) when (exception.InnerException is SqliteException { SqliteExtendedErrorCode: raw.SQLITE_CONSTRAINT_FOREIGNKEY })
         {
-            return InvalidRequest(nameof(request.StorageLocationId), "Storage location does not exist.");
+            return InvalidRequest(nameof(Exhibit.StorageLocationId), "Storage location does not exist.");
         }
     }
 

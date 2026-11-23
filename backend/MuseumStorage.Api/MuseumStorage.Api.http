@@ -35,3 +35,65 @@ Content-Type: application/json
   "temperatureAlarm": 30.0,
   "humidityAlarm": 80.0
 }
+
+###
+
+# Run the storage workflow requests in order. Use fresh codes for another run.
+# @name createCheckInLocation
+POST {{MuseumStorage.Api_HostAddress}}/api/storage-locations
+Content-Type: application/json
+
+{
+  "code": "SHELF-DEMO-A1",
+  "name": "Demo Shelf A1"
+}
+
+###
+
+# @name createMoveLocation
+POST {{MuseumStorage.Api_HostAddress}}/api/storage-locations
+Content-Type: application/json
+
+{
+  "code": "SHELF-DEMO-B2",
+  "name": "Demo Shelf B2"
+}
+
+###
+
+# @name createExhibit
+POST {{MuseumStorage.Api_HostAddress}}/api/exhibits
+Content-Type: application/json
+
+{
+  "code": "EXHIBIT-DEMO-0001",
+  "name": "Ceramic Bowl",
+  "status": "CheckedOut"
+}
+
+###
+
+POST {{MuseumStorage.Api_HostAddress}}/api/exhibits/{{createExhibit.response.body.$.id}}/check-in
+Content-Type: application/json
+
+{
+  "storageLocationId": {{createCheckInLocation.response.body.$.id}}
+}
+
+###
+
+POST {{MuseumStorage.Api_HostAddress}}/api/exhibits/{{createExhibit.response.body.$.id}}/move
+Content-Type: application/json
+
+{
+  "storageLocationId": {{createMoveLocation.response.body.$.id}}
+}
+
+###
+
+POST {{MuseumStorage.Api_HostAddress}}/api/exhibits/{{createExhibit.response.body.$.id}}/check-out
+
+###
+
+GET {{MuseumStorage.Api_HostAddress}}/api/exhibits/{{createExhibit.response.body.$.id}}/operations
+Accept: application/json

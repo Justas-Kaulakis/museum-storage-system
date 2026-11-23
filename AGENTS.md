@@ -85,11 +85,11 @@ Current physical control logic:
 - the simulated relay is active-low;
 - fan control and alarm decisions are made locally on the MCU.
 
-These values are defaults only. They must become configurable through the server.
+These values are startup defaults. The ESP32 sends telemetry and fetches environmental settings from the backend. It validates settings before applying them and keeps the last valid values in memory during an outage.
 
 ## QR and storage architecture
 
-Exhibits are identified by QR codes.
+Exhibits have stable codes for future QR labels.
 
 The QR code should contain a stable exhibit identifier, for example:
 
@@ -103,7 +103,7 @@ QR code -> ArduCAM -> MCU -> image upload to server -> QR decoding -> exhibit lo
 
 QR decoding should be performed on the server, not on the Nano 33 IoT.
 
-Planned storage operations:
+Implemented storage operations:
 - view exhibit information;
 - place/check an exhibit into storage;
 - remove/check an exhibit out of storage;
@@ -225,26 +225,12 @@ Do not replace the current architecture with minimal APIs or a different framewo
 
 ## Current backend state
 
-The backend already has working sensor-reading persistence.
+The backend persists sensor readings, environmental settings, exhibits, storage locations, and storage-operation history in SQLite.
 
-Current entity:
-- SensorReading
-
-Current stored fields:
-- Id;
-- DeviceId;
-- Temperature;
-- Humidity;
-- LightLevel;
-- FanEnabled;
-- AlarmEnabled;
-- CreatedAt.
-
-Current endpoint behavior:
-- POST /api/sensor-readings stores a reading;
-- GET /api/sensor-readings returns recent readings newest-first.
-
-This behavior has already been manually tested successfully against SQLite.
+- POST /api/sensor-readings stores ESP32 telemetry. GET /api/sensor-readings returns recent readings newest-first.
+- GET and PUT /api/environment-settings read and update the environmental thresholds the ESP32 fetches.
+- /api/storage-locations and /api/exhibits support listing, retrieving, creating, and updating registry entries. Exhibits can also be looked up by code.
+- POST /api/exhibits/{id}/check-in, /move, and /check-out apply storage operations. GET /api/exhibits/{id}/operations returns the exhibit's history newest-first.
 
 Current development URLs:
 - HTTPS: https://localhost:7204
@@ -314,20 +300,8 @@ When reporting completion:
 - report test results;
 - mention any remaining limitations or decisions that require user input.
 
-## Immediate development direction
+## Storage history
 
-The next backend feature is server-managed environmental configuration.
+Explicit operations and storage transitions through PUT /api/exhibits/{id} save the exhibit change and its UTC history entry together. History starts with the first storage transition after exhibit registration.
 
-The server should persist configurable thresholds such as:
-- fan-on temperature;
-- fan-off temperature;
-- fan-on humidity;
-- fan-off humidity;
-- critical/alarm temperature;
-- critical/alarm humidity.
-
-The server stores and exposes these values.
-
-The MCU remains responsible for applying them locally.
-
-The server must not directly command the fan based on incoming readings.
+The exhibit registry, storage locations, and operation history are server-side features. The MCU continues to apply environmental thresholds locally.
