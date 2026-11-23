@@ -97,3 +97,8 @@ POST {{MuseumStorage.Api_HostAddress}}/api/exhibits/{{createExhibit.response.bod
 
 GET {{MuseumStorage.Api_HostAddress}}/api/exhibits/{{createExhibit.response.body.$.id}}/operations
 Accept: application/json
+
+###
+
+# Upload a PNG or JPEG with a QR code for an existing exhibit.
+# curl.exe -F "file=@exhibit-qr.png" http://localhost:5054/api/exhibits/scan-qr

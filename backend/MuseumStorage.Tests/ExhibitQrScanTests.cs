@@ -1,0 +1,194 @@
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using MuseumStorage.Api.Controllers;
+using MuseumStorage.Api.Models;
+using MuseumStorage.Domain.Entities;
+using MuseumStorage.Infrastructure.Data;
+using SkiaSharp;
+using ZXing;
+using ZXing.QrCode;
+
+namespace MuseumStorage.Tests;
+
+public sealed class ExhibitQrScanTests : IAsyncLifetime
+{
+    private const string ExhibitCode = "EXHIBIT-0001";
+    private readonly SqliteConnection _connection = new("Data Source=:memory:");
+    private long _exhibitId;
+
+    public async Task InitializeAsync()
+    {
+        await _connection.OpenAsync();
+        await using var dbContext = CreateDbContext();
+        await dbContext.Database.MigrateAsync();
+        var exhibit = new Exhibit
+        {
+            Code = ExhibitCode,
+            Name = "Ceramic Bowl",
+            Status = ExhibitStatus.Stored,
+            StorageLocation = new StorageLocation { Code = "SHELF-A1", Name = "Shelf A1" }
+        };
+        dbContext.Exhibits.Add(exhibit);
+        await dbContext.SaveChangesAsync();
+        _exhibitId = exhibit.Id;
+    }
+
+    public Task DisposeAsync() => _connection.DisposeAsync().AsTask();
+
+    [Theory]
+    [InlineData(SKEncodedImageFormat.Png)]
+    [InlineData(SKEncodedImageFormat.Jpeg)]
+    public async Task ScanReturnsExistingExhibitWithoutChangingItsStorage(SKEncodedImageFormat format)
+    {
+        var result = await ScanAsync(CreateQrImage(ExhibitCode, format), "upload.bin");
+
+        var response = Assert.IsType<OkObjectResult>(result.Result);
+        var exhibit = Assert.IsType<ExhibitResponse>(response.Value);
+        Assert.Equal(_exhibitId, exhibit.Id);
+        Assert.Equal(ExhibitCode, exhibit.Code);
+        Assert.Equal("Ceramic Bowl", exhibit.Name);
+        Assert.Equal("Stored", exhibit.Status);
+        Assert.Equal("SHELF-A1", exhibit.StorageLocation?.Code);
+
+        await using var dbContext = CreateDbContext();
+        var persisted = await dbContext.Exhibits.SingleAsync();
+        Assert.Equal(ExhibitStatus.Stored, persisted.Status);
+        Assert.Equal(exhibit.StorageLocationId, persisted.StorageLocationId);
+        Assert.Empty(await dbContext.StorageOperations.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("EXHIBIT-UNKNOWN")]
+    [InlineData("exhibit-0001")]
+    public async Task ScanReturnsNotFoundForUnknownExactCode(string code)
+    {
+        var result = await ScanAsync(CreateQrImage(code));
+
+        Assert.IsType<NotFoundResult>(result.Result);
+    }
+
+    [Fact]
+    public async Task ScanTrimsSurroundingWhitespace()
+    {
+        var result = await ScanAsync(CreateQrImage($"  {ExhibitCode}\r\n"));
+
+        var response = Assert.IsType<OkObjectResult>(result.Result);
+        Assert.Equal(_exhibitId, Assert.IsType<ExhibitResponse>(response.Value).Id);
+    }
+
+    [Fact]
+    public async Task ScanRejectsWhitespaceQrValue()
+    {
+        var result = await ScanAsync(CreateQrImage("   "));
+
+        Assert.Contains("must contain an exhibit code", AssertBadRequest(result));
+    }
+
+    [Fact]
+    public async Task ScanRejectsImageWithoutQrCode()
+    {
+        using var bitmap = new SKBitmap(240, 240);
+        bitmap.Erase(SKColors.White);
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+
+        var result = await ScanAsync(data.ToArray());
+
+        Assert.Contains("No QR code", AssertBadRequest(result));
+    }
+
+    [Fact]
+    public async Task ScanRejectsMissingFile()
+    {
+        AssertBadRequest(await ScanAsync(null));
+    }
+
+    [Fact]
+    public async Task ScanRejectsEmptyFile()
+    {
+        AssertBadRequest(await ScanAsync([]));
+    }
+
+    [Fact]
+    public async Task ScanRejectsUnsupportedImageFormatWithPngFilename()
+    {
+        var result = await ScanAsync(CreateQrImage(ExhibitCode, SKEncodedImageFormat.Webp), "scan.png");
+
+        Assert.Contains("valid PNG or JPEG", AssertBadRequest(result));
+    }
+
+    [Fact]
+    public async Task ScanRejectsCorruptImage()
+    {
+        var validImage = CreateQrImage(ExhibitCode);
+        var result = await ScanAsync(validImage[..(validImage.Length / 2)]);
+
+        AssertBadRequest(result);
+    }
+
+    [Fact]
+    public async Task ScanRejectsOversizedFile()
+    {
+        var result = await ScanAsync(new byte[5 * 1024 * 1024 + 1]);
+
+        Assert.Contains("5 MiB", AssertBadRequest(result));
+    }
+
+    [Fact]
+    public async Task ScanRejectsImageOverPixelLimit()
+    {
+        using var bitmap = new SKBitmap(3200, 2600);
+        bitmap.Erase(SKColors.White);
+        using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+
+        var result = await ScanAsync(data.ToArray());
+
+        Assert.Contains("8 megapixels", AssertBadRequest(result));
+    }
+
+    private MuseumStorageDbContext CreateDbContext() =>
+        new(new DbContextOptionsBuilder<MuseumStorageDbContext>().UseSqlite(_connection).Options);
+
+    private async Task<ActionResult<ExhibitResponse>> ScanAsync(byte[]? image, string fileName = "scan.png")
+    {
+        using var multipart = new MultipartFormDataContent();
+        if (image is null)
+            multipart.Add(new StringContent("No file"), "note");
+        else
+            multipart.Add(new ByteArrayContent(image), "file", fileName);
+
+        using var body = new MemoryStream();
+        await multipart.CopyToAsync(body);
+        body.Position = 0;
+
+        var context = new DefaultHttpContext();
+        context.Request.ContentType = multipart.Headers.ContentType!.ToString();
+        context.Request.ContentLength = body.Length;
+        context.Request.Body = body;
+        await using var dbContext = CreateDbContext();
+        var controller = new ExhibitsController(dbContext) { ControllerContext = new ControllerContext { HttpContext = context } };
+
+        return await controller.ScanQr();
+    }
+
+    private static byte[] CreateQrImage(string code, SKEncodedImageFormat format = SKEncodedImageFormat.Png)
+    {
+        var writer = new ZXing.SkiaSharp.BarcodeWriter
+        {
+            Format = BarcodeFormat.QR_CODE,
+            Options = new QrCodeEncodingOptions { Width = 240, Height = 240, Margin = 4 }
+        };
+        using var bitmap = writer.Write(code);
+        using var data = bitmap.Encode(format, 95);
+        return data.ToArray();
+    }
+
+    private static string AssertBadRequest(ActionResult<ExhibitResponse> result)
+    {
+        var response = Assert.IsAssignableFrom<ObjectResult>(result.Result);
+        Assert.Equal(400, response.StatusCode);
+        var problem = Assert.IsType<ValidationProblemDetails>(response.Value);
+        return Assert.Single(problem.Errors["file"]);
+    }
+}

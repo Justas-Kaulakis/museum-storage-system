@@ -1,10 +1,15 @@
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Net.Http.Headers;
 using MuseumStorage.Api.Models;
 using MuseumStorage.Domain.Entities;
 using MuseumStorage.Infrastructure.Data;
+using SkiaSharp;
 using SQLitePCL;
+using ZXing;
+using ZXing.Common;
 
 namespace MuseumStorage.Api.Controllers;
 
@@ -12,6 +17,10 @@ namespace MuseumStorage.Api.Controllers;
 [Route("api/exhibits")]
 public class ExhibitsController : ControllerBase
 {
+    private const int MaxQrImageBytes = 5 * 1024 * 1024;
+    private const int MaxQrRequestBytes = MaxQrImageBytes + 64 * 1024;
+    private const int MaxQrImagePixels = 8_000_000;
+
     private readonly MuseumStorageDbContext _dbContext;
 
     public ExhibitsController(MuseumStorageDbContext dbContext)
@@ -40,6 +49,76 @@ public class ExhibitsController : ControllerBase
     {
         var exhibit = await ExhibitsWithLocation.SingleOrDefaultAsync(x => x.Code == code, cancellationToken);
         return exhibit is null ? NotFound() : Ok(ToResponse(exhibit));
+    }
+
+    [HttpPost("scan-qr")]
+    [RequestSizeLimit(MaxQrRequestBytes)]
+    public async Task<ActionResult<ExhibitResponse>> ScanQr()
+    {
+        if (!MediaTypeHeaderValue.TryParse(Request.ContentType, out var contentType) ||
+            !contentType.MediaType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
+            return InvalidRequest("file", "Upload a PNG or JPEG image as a multipart form file.");
+
+        if (Request.ContentLength > MaxQrRequestBytes)
+            return InvalidRequest("file", "The image must be at most 5 MiB.");
+
+        var cancellationToken = HttpContext.RequestAborted;
+        IFormCollection form;
+        try
+        {
+            form = await Request.ReadFormAsync(new FormOptions
+            {
+                ValueCountLimit = 1,
+                MultipartBodyLengthLimit = MaxQrImageBytes,
+                MemoryBufferThreshold = MaxQrImageBytes
+            }, cancellationToken);
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException)
+        {
+            return InvalidRequest("file", "Upload one complete image file of at most 5 MiB.");
+        }
+
+        if (form.Files.Count != 1 || form.Files.GetFile("file") is not { Length: > 0 } file)
+            return InvalidRequest("file", "A non-empty image is required in the file field.");
+
+        if (file.Length > MaxQrImageBytes)
+            return InvalidRequest("file", "The image must be at most 5 MiB.");
+
+        Result? decoded;
+        try
+        {
+            using var image = file.OpenReadStream();
+            using var codec = SKCodec.Create(image);
+            if (codec is null || codec.EncodedFormat is not (SKEncodedImageFormat.Png or SKEncodedImageFormat.Jpeg))
+                return InvalidRequest("file", "The file must contain a valid PNG or JPEG image.");
+
+            var imageInfo = codec.Info;
+            if ((long)imageInfo.Width * imageInfo.Height > MaxQrImagePixels)
+                return InvalidRequest("file", "The image must be at most 8 megapixels.");
+
+            using var bitmap = new SKBitmap(imageInfo.Width, imageInfo.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+            if (codec.GetPixels(bitmap.Info, bitmap.GetPixels()) != SKCodecResult.Success)
+                return InvalidRequest("file", "The image is corrupt or incomplete.");
+
+            var reader = new ZXing.SkiaSharp.BarcodeReader
+            {
+                Options = new DecodingOptions { PossibleFormats = [BarcodeFormat.QR_CODE], TryHarder = true }
+            };
+            decoded = reader.Decode(bitmap);
+        }
+        catch (Exception exception) when (exception is ArgumentException or InvalidOperationException or IOException or ReaderException)
+        {
+            return InvalidRequest("file", "The image could not be decoded.");
+        }
+
+        if (decoded is null)
+            return InvalidRequest("file", "No QR code could be decoded from the image.");
+
+        var code = decoded.Text?.Trim();
+        if (string.IsNullOrEmpty(code))
+            return InvalidRequest("file", "The QR code must contain an exhibit code.");
+
+        return await GetByCode(code, cancellationToken);
     }
 
     [HttpPost]

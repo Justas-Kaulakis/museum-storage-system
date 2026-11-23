@@ -89,7 +89,7 @@ These values are startup defaults. The ESP32 sends telemetry and fetches environ
 
 ## QR and storage architecture
 
-Exhibits have stable codes for future QR labels.
+Exhibits have stable codes that can be encoded in QR labels.
 
 The QR code should contain a stable exhibit identifier, for example:
 
@@ -101,7 +101,7 @@ The intended future flow is:
 
 QR code -> ArduCAM -> MCU -> image upload to server -> QR decoding -> exhibit lookup -> storage operation
 
-QR decoding should be performed on the server, not on the Nano 33 IoT.
+The server decodes QR images uploaded to POST /api/exhibits/scan-qr. It accepts a PNG or JPEG in the multipart field named file, processes it in memory, and looks up the exhibit by the decoded code.
 
 Implemented storage operations:
 - view exhibit information;
@@ -230,6 +230,7 @@ The backend persists sensor readings, environmental settings, exhibits, storage 
 - POST /api/sensor-readings stores ESP32 telemetry. GET /api/sensor-readings returns recent readings newest-first.
 - GET and PUT /api/environment-settings read and update the environmental thresholds the ESP32 fetches.
 - /api/storage-locations and /api/exhibits support listing, retrieving, creating, and updating registry entries. Exhibits can also be looked up by code.
+- POST /api/exhibits/scan-qr provides QR-based exhibit lookup.
 - POST /api/exhibits/{id}/check-in, /move, and /check-out apply storage operations. GET /api/exhibits/{id}/operations returns the exhibit's history newest-first.
 
 Current development URLs:
