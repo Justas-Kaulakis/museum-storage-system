@@ -1,26 +1,38 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import { ApiError, apiFetch, errorMessage, jsonRequest } from "./api";
-import { ErrorNotice, LoadNotice, LocationCell, LocationSelect, StatusBadge, Timestamp, useApiData } from "./shared";
+import { ErrorNotice, formatTimestamp, LoadNotice, useApiData } from "./shared";
 import type { Exhibit, ExhibitInput, ExhibitStatus, StorageLocation, StorageOperation } from "./types";
 
 const exhibitsPath = "/exhibits";
 const locationsPath = "/storage-locations";
-const loadRegistry = (signal: AbortSignal) => Promise.all([
-  apiFetch<Exhibit[]>(exhibitsPath, { signal }),
-  apiFetch<StorageLocation[]>(locationsPath, { signal }),
-]);
+const storageLocationsLink = "/exhibits#storage-locations";
 
-export function ExhibitsPage() {
+async function loadRegistry(signal: AbortSignal) {
+  const [exhibits, locations] = await Promise.all([
+    apiFetch<Exhibit[]>(exhibitsPath, { signal }),
+    apiFetch<StorageLocation[]>(locationsPath, { signal }),
+  ]);
+  return { exhibits, locations };
+}
+
+export function RegistryPage() {
   const { data, loading, error, refresh } = useApiData(loadRegistry);
   const [panel, setPanel] = useState<"create" | "scan" | null>(null);
-  const exhibits = data?.[0];
+  const exhibits = data?.exhibits;
+  const { hash, key } = useLocation();
+
+  useEffect(() => {
+    if (hash === "#storage-locations") {
+      document.getElementById("storage-locations")?.scrollIntoView();
+    }
+  }, [hash, key, loading]);
 
   return (
     <>
       <header className="page-heading">
-        <h1>Exhibits</h1>
+        <h1>Registry</h1>
         <div className="button-group">
           <button className="button" aria-expanded={panel === "scan"} onClick={() => setPanel(panel === "scan" ? null : "scan")}>Scan QR</button>
           <button className="button primary" aria-expanded={panel === "create"} disabled={!data}
@@ -28,29 +40,110 @@ export function ExhibitsPage() {
         </div>
       </header>
       <LoadNotice error={error} loading={loading} retry={refresh} />
-      {panel === "create" && data && <CreateExhibitForm locations={data[1]} />}
+      {panel === "create" && data && <CreateExhibitForm locations={data.locations} />}
       {panel === "scan" && <ScanQrForm />}
 
       {exhibits && (
-        <section className="panel table-wrap" aria-label="Exhibit registry">
-          <table className="exhibit-table">
-            <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Category</th><th scope="col">Status</th><th scope="col">Storage location</th></tr></thead>
-            <tbody>
-              {exhibits.map((exhibit) => (
-                <tr key={exhibit.id}>
-                  <th scope="row"><Link className="code table-link" to={`/exhibits/${exhibit.id}`}>{exhibit.code}</Link></th>
-                  <td>{exhibit.name}</td>
-                  <td>{exhibit.category || "—"}</td>
-                  <td><StatusBadge status={exhibit.status} /></td>
-                  <td><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></td>
-                </tr>
-              ))}
-              {exhibits.length === 0 && <tr><td className="empty-cell" colSpan={5}>No exhibits have been registered.</td></tr>}
-            </tbody>
-          </table>
+        <section className="panel" aria-labelledby="exhibits-heading">
+          <div className="panel-heading"><h2 id="exhibits-heading">Exhibits</h2></div>
+          <div className="table-wrap">
+            <table className="exhibit-table">
+              <thead><tr><th scope="col">Code</th><th scope="col">Name</th><th scope="col">Category</th><th scope="col">Status</th><th scope="col">Storage location</th></tr></thead>
+              <tbody>
+                {exhibits.map((exhibit) => (
+                  <tr key={exhibit.id}>
+                    <th scope="row"><Link className="code table-link" to={`/exhibits/${exhibit.id}`}>{exhibit.code}</Link></th>
+                    <td>{exhibit.name}</td>
+                    <td>{exhibit.category || "—"}</td>
+                    <td><StatusBadge status={exhibit.status} /></td>
+                    <td><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></td>
+                  </tr>
+                ))}
+                {exhibits.length === 0 && <tr><td className="empty-cell" colSpan={5}>No exhibits have been registered.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
+      <StorageLocationsSection locations={data?.locations} onCreated={refresh} />
     </>
+  );
+}
+
+function StorageLocationsSection({ locations, onCreated }: {
+  locations: StorageLocation[] | undefined;
+  onCreated: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  function toggleForm() {
+    setShowForm(!showForm);
+    setError("");
+    setNotice("");
+  }
+
+  async function createLocation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (saving) return;
+
+    const fields = new FormData(event.currentTarget);
+    setSaving(true);
+    setError("");
+    try {
+      const created = await apiFetch<StorageLocation>(locationsPath, jsonRequest("POST", {
+        code: fields.get("code"),
+        name: fields.get("name"),
+      }));
+      setShowForm(false);
+      setNotice(`${created.name} was created.`);
+      onCreated();
+    } catch (failure) {
+      setError(errorMessage(failure, "Could not create the storage location."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section id="storage-locations" className="panel" aria-labelledby="locations-heading">
+      <div className="panel-heading">
+        <h2 id="locations-heading">Storage locations</h2>
+        <button className="button primary" aria-expanded={showForm} disabled={saving} onClick={toggleForm}>
+          {showForm ? "Cancel" : "New location"}
+        </button>
+      </div>
+      {locations && (
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th scope="col">Code</th><th scope="col">Name</th></tr></thead>
+            <tbody>
+              {locations.map((location) => (
+                <tr key={location.id}><th scope="row" className="code">{location.code}</th><td>{location.name}</td></tr>
+              ))}
+              {locations.length === 0 && <tr><td colSpan={2} className="empty-cell">No storage locations have been registered.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {notice && <div className="form-body"><p className="notice notice-success" role="status">{notice}</p></div>}
+      {showForm && (
+        <form className="form-body" onSubmit={createLocation}>
+          {error && <ErrorNotice message={error} />}
+          <fieldset disabled={saving}>
+            <div className="field-grid">
+              <label>Code<input name="code" required placeholder="SHELF-A1" /></label>
+              <label>Name<input name="name" required /></label>
+            </div>
+            <div className="form-actions">
+              <button className="button primary" type="submit">{saving ? "Creating..." : "Create location"}</button>
+            </div>
+          </fieldset>
+        </form>
+      )}
+    </section>
   );
 }
 
@@ -111,7 +204,7 @@ function CreateExhibitForm({ locations }: { locations: StorageLocation[] }) {
             )}
             <label className="full-width">Description<textarea name="description" rows={3} /></label>
           </div>
-          {needsLocation && <p className="state-text"><Link to="/storage-locations">Create a storage location</Link> to register this exhibit as stored.</p>}
+          {needsLocation && <p className="state-text"><Link to={storageLocationsLink}>Create a storage location</Link> to register this exhibit as stored.</p>}
           <div className="form-actions"><button className="button primary" disabled={needsLocation} type="submit">{saving ? "Creating..." : "Create exhibit"}</button></div>
         </fieldset>
       </form>
@@ -206,7 +299,7 @@ export function ExhibitDetail({ id }: { id: string }) {
 
   return (
     <>
-      <Link className="back-link" to="/exhibits">Exhibits</Link>
+      <Link className="back-link" to="/exhibits">Registry</Link>
       <header className="page-heading detail-heading">
         <div>
           <h1>{missing ? "Exhibit not found" : exhibit?.name ?? "Exhibit details"}</h1>
@@ -244,7 +337,7 @@ export function ExhibitDetail({ id }: { id: string }) {
                   </>
                 ) : (
                   <p className="state-text">
-                    <Link to="/storage-locations">Create a storage location</Link> {isStored ? "to move this exhibit." : "to check in this exhibit."}
+                    <Link to={storageLocationsLink}>Create a storage location</Link> {isStored ? "to move this exhibit." : "to check in this exhibit."}
                   </p>
                 )}
                 {isStored && <button className="button" type="button" onClick={() => void apply("check-out")}>{working === "check-out" ? "Saving..." : "Check out"}</button>}
@@ -262,7 +355,7 @@ export function ExhibitDetail({ id }: { id: string }) {
                       <th scope="row">{operationLabels[operation.type]}</th>
                       <td><LocationCell location={operation.fromStorageLocation} id={operation.fromStorageLocationId} /></td>
                       <td><LocationCell location={operation.toStorageLocation} id={operation.toStorageLocationId} /></td>
-                      <td><Timestamp value={operation.createdAt} /></td>
+                      <td><time dateTime={operation.createdAt}>{formatTimestamp(operation.createdAt)}</time></td>
                     </tr>
                   ))}
                   {data[1].length === 0 && <tr><td colSpan={4} className="empty-cell">No storage operations have been recorded.</td></tr>}
@@ -273,5 +366,31 @@ export function ExhibitDetail({ id }: { id: string }) {
         </>
       )}
     </>
+  );
+}
+
+function StatusBadge({ status }: { status: ExhibitStatus }) {
+  return status === "Stored"
+    ? <span className="badge badge-good">Stored</span>
+    : <span className="badge badge-neutral">Checked out</span>;
+}
+
+function LocationCell({ location, id }: { location: StorageLocation | null; id: number | null }) {
+  if (!location) return <span className="muted">{id === null ? "—" : `Location ${id}`}</span>;
+  return <span className="location-value"><span className="code">{location.code}</span>{location.name}</span>;
+}
+
+function LocationSelect({ value, locations, onChange }: {
+  value: string;
+  locations: StorageLocation[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <select value={value} required onChange={(event) => onChange(event.target.value)}>
+      <option value="">Select a location</option>
+      {locations.map((location) => (
+        <option key={location.id} value={location.id}>{location.code} · {location.name}</option>
+      ))}
+    </select>
   );
 }

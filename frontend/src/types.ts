@@ -9,15 +9,14 @@ export interface SensorReading {
   createdAt: string;
 }
 
-export const thresholdRows = [
-  { label: "Fan on", temperature: "fanOnTemperature", humidity: "fanOnHumidity" },
-  { label: "Fan off", temperature: "fanOffTemperature", humidity: "fanOffHumidity" },
-  { label: "Alarm", temperature: "temperatureAlarm", humidity: "humidityAlarm" },
-] as const;
-
-type ThresholdRow = (typeof thresholdRows)[number];
-export type Threshold = ThresholdRow["temperature" | "humidity"];
-export type EnvironmentSettings = Record<Threshold, number>;
+export interface EnvironmentSettings {
+  fanOnTemperature: number;
+  fanOffTemperature: number;
+  fanOnHumidity: number;
+  fanOffHumidity: number;
+  temperatureAlarm: number;
+  humidityAlarm: number;
+}
 
 export interface StorageLocation {
   id: number;

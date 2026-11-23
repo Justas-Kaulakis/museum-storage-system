@@ -1,41 +1,87 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router";
 import { apiFetch, errorMessage, jsonRequest } from "./api";
-import { Badge, ErrorNotice, LoadNotice, Timestamp, useApiData } from "./shared";
-import { thresholdRows } from "./types";
-import type { EnvironmentSettings, SensorReading, Threshold } from "./types";
+import { ErrorNotice, formatTimestamp, LoadNotice, useApiData } from "./shared";
+import type { EnvironmentSettings, SensorReading } from "./types";
 
 const settingsPath = "/environment-settings";
-const loadSettings = (signal: AbortSignal) => apiFetch<EnvironmentSettings>(settingsPath, { signal });
-const loadDashboard = (signal: AbortSignal) => Promise.all([
-  apiFetch<SensorReading[]>("/sensor-readings", { signal }),
-  loadSettings(signal),
-]);
 const measurementFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+type ThresholdField = keyof EnvironmentSettings;
+const thresholdRows: { label: string; temperature: ThresholdField; humidity: ThresholdField }[] = [
+  { label: "Fan on", temperature: "fanOnTemperature", humidity: "fanOnHumidity" },
+  { label: "Fan off", temperature: "fanOffTemperature", humidity: "fanOffHumidity" },
+  { label: "Alarm", temperature: "temperatureAlarm", humidity: "humidityAlarm" },
+];
 
-export function Dashboard() {
-  const { data, loading, error, refresh } = useApiData(loadDashboard);
-  const reading = data?.[0][0];
-  const settings = data?.[1];
+async function loadEnvironment(signal: AbortSignal) {
+  const [readings, settings] = await Promise.all([
+    apiFetch<SensorReading[]>("/sensor-readings", { signal }),
+    apiFetch<EnvironmentSettings>(settingsPath, { signal }),
+  ]);
+  return { reading: readings[0], settings };
+}
+
+export function EnvironmentPage() {
+  const { data, setData, loading, error, refresh } = useApiData(loadEnvironment);
+  const [edits, setEdits] = useState<{ [field: string]: string }>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const reading = data?.reading;
+  const settings = data?.settings;
   const measurements = [
     { label: "Temperature", value: reading?.temperature, unit: "°C" },
     { label: "Humidity", value: reading?.humidity, unit: "%" },
     { label: "Light level", value: reading?.lightLevel, unit: "lx" },
   ];
 
+  function updateField(field: ThresholdField, value: string) {
+    setEdits((previous) => ({ ...previous, [field]: value }));
+    setSaved(false);
+    setSaveError("");
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!data || saving || loading) return;
+
+    const form = new FormData(event.currentTarget);
+    const thresholds: EnvironmentSettings = {
+      fanOnTemperature: Number(form.get("fanOnTemperature")),
+      fanOffTemperature: Number(form.get("fanOffTemperature")),
+      fanOnHumidity: Number(form.get("fanOnHumidity")),
+      fanOffHumidity: Number(form.get("fanOffHumidity")),
+      temperatureAlarm: Number(form.get("temperatureAlarm")),
+      humidityAlarm: Number(form.get("humidityAlarm")),
+    };
+
+    setSaving(true);
+    setSaved(false);
+    setSaveError("");
+    try {
+      const persisted = await apiFetch<EnvironmentSettings>(settingsPath, jsonRequest("PUT", thresholds));
+      setData({ ...data, settings: persisted });
+      setEdits({});
+      setSaved(true);
+    } catch (failure) {
+      setSaveError(errorMessage(failure, "Could not save the thresholds."));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <>
       <header className="page-heading">
-        <h1>Dashboard</h1>
-        <button className="button" onClick={refresh} disabled={loading}>Refresh</button>
+        <h1>Environment</h1>
+        <button className="button" onClick={refresh} disabled={loading || saving}>Refresh</button>
       </header>
       <LoadNotice error={error} loading={loading} retry={refresh} />
 
       <section className="panel" aria-labelledby="current-heading">
         <div className="panel-heading">
           <h2 id="current-heading">Current environment</h2>
-          {reading && <p className="report-time">Last reading <Timestamp value={reading.createdAt} /></p>}
+          {reading && <p className="report-time">Last reading <time dateTime={reading.createdAt}>{formatTimestamp(reading.createdAt)}</time></p>}
         </div>
         {!reading && data && <p className="state-text panel-message">Waiting for the first sensor reading.</p>}
         <dl className="measurement-grid">
@@ -49,11 +95,15 @@ export function Dashboard() {
         <dl className="device-states">
           <div>
             <dt>Fan</dt>
-            <dd>{reading ? <Badge label={reading.fanEnabled ? "On" : "Off"} tone={reading.fanEnabled ? "active" : "neutral"} /> : "—"}</dd>
+            <dd>
+              {reading ? <span className={reading.fanEnabled ? "badge badge-active" : "badge badge-neutral"}>{reading.fanEnabled ? "On" : "Off"}</span> : "—"}
+            </dd>
           </div>
           <div>
             <dt>Alarm</dt>
-            <dd>{reading ? <Badge label={reading.alarmEnabled ? "Active" : "Normal"} tone={reading.alarmEnabled ? "alarm" : "good"} /> : "—"}</dd>
+            <dd>
+              {reading ? <span className={reading.alarmEnabled ? "badge badge-alarm" : "badge badge-good"}>{reading.alarmEnabled ? "Active" : "Normal"}</span> : "—"}
+            </dd>
           </div>
           {reading && <div className="device-id"><dt>Device</dt><dd className="code">{reading.deviceId}</dd></div>}
         </dl>
@@ -62,7 +112,6 @@ export function Dashboard() {
       <section className="panel" aria-labelledby="thresholds-heading">
         <div className="panel-heading">
           <h2 id="thresholds-heading">Environmental thresholds</h2>
-          <Link className="button" to="/environment-settings">Edit thresholds</Link>
         </div>
         <div className="table-wrap">
           <table>
@@ -79,70 +128,22 @@ export function Dashboard() {
           </table>
         </div>
       </section>
-    </>
-  );
-}
-
-type SettingsDraft = Record<Threshold, string>;
-const thresholdFields = thresholdRows.flatMap(({ temperature, humidity }) => [temperature, humidity]);
-
-function toDraft(settings: EnvironmentSettings) {
-  return Object.fromEntries(thresholdFields.map((field) => [field, String(settings[field])])) as SettingsDraft;
-}
-
-export function EnvironmentSettingsPage() {
-  const { data, loading, error, refresh } = useApiData(loadSettings);
-  const [draft, setDraft] = useState<SettingsDraft | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [saveError, setSaveError] = useState("");
-  const fields = draft ?? (data && toDraft(data));
-
-  function updateField(field: Threshold, value: string) {
-    if (!fields) return;
-    setDraft({ ...fields, [field]: value });
-    setSaved(false);
-    setSaveError("");
-  }
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!fields || saving) return;
-    setSaving(true);
-    setSaved(false);
-    setSaveError("");
-    const settings = Object.fromEntries(thresholdFields.map((field) => [field, Number(fields[field])]));
-    try {
-      const persisted = await apiFetch<EnvironmentSettings>(settingsPath, jsonRequest("PUT", settings));
-      setDraft(toDraft(persisted));
-      setSaved(true);
-    } catch (failure) {
-      setSaveError(errorMessage(failure, "Could not save the thresholds."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <>
-      <header className="page-heading"><h1>Environment settings</h1></header>
-      <LoadNotice error={error} loading={loading} retry={refresh} />
-      {fields && (
+      {settings && (
         <section className="panel" aria-labelledby="threshold-form-heading">
-          <div className="panel-heading"><h2 id="threshold-form-heading">Control thresholds</h2></div>
+          <div className="panel-heading"><h2 id="threshold-form-heading">Edit thresholds</h2></div>
           <form className="form-body" onSubmit={save}>
             {saveError && <ErrorNotice message={saveError} />}
-            <fieldset disabled={saving} className="threshold-form">
+            <fieldset disabled={saving || loading}>
               {thresholdRows.map(({ label, temperature, humidity }) => (
                 <div key={label} className="threshold-row">
                   <h3>{label}</h3>
                   <label>
                     Temperature (°C)
-                    <input aria-label={`${label} temperature (°C)`} type="number" step="any" required value={fields[temperature]} onChange={(event) => updateField(temperature, event.target.value)} />
+                    <input name={temperature} aria-label={`${label} temperature (°C)`} type="number" step="any" required value={edits[temperature] ?? settings[temperature]} onChange={(event) => updateField(temperature, event.target.value)} />
                   </label>
                   <label>
                     Humidity (%)
-                    <input aria-label={`${label} humidity (%)`} type="number" step="any" required value={fields[humidity]} onChange={(event) => updateField(humidity, event.target.value)} />
+                    <input name={humidity} aria-label={`${label} humidity (%)`} type="number" step="any" required value={edits[humidity] ?? settings[humidity]} onChange={(event) => updateField(humidity, event.target.value)} />
                   </label>
                 </div>
               ))}

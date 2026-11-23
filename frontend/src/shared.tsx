@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { errorMessage } from "./api";
-import type { ExhibitStatus, StorageLocation } from "./types";
 
 export function useApiData<T>(load: (signal: AbortSignal) => Promise<T>) {
   const [data, setData] = useState<T | null>(null);
@@ -31,7 +30,7 @@ export function useApiData<T>(load: (signal: AbortSignal) => Promise<T>) {
     setRevision((previous) => previous + 1);
   }
 
-  return { data, error, loading, refresh };
+  return { data, setData, error, loading, refresh };
 }
 
 export function ErrorNotice({ message, retry }: { message: string; retry?: () => void }) {
@@ -49,36 +48,8 @@ export function LoadNotice({ error, loading, retry }: { error: unknown; loading:
   return null;
 }
 
-export function Badge({ label, tone = "neutral" }: { label: string; tone?: "neutral" | "good" | "active" | "alarm" }) {
-  return <span className={`badge badge-${tone}`}>{label}</span>;
-}
-
-export function StatusBadge({ status }: { status: ExhibitStatus }) {
-  return status === "Stored" ? <Badge label="Stored" tone="good" /> : <Badge label="Checked out" />;
-}
-
-export function LocationCell({ location, id }: { location: StorageLocation | null; id?: number | null }) {
-  if (!location) return <span className="muted">{id == null ? "—" : `Location ${id}`}</span>;
-  return <span className="location-value"><span className="code">{location.code}</span>{location.name}</span>;
-}
-
-export function LocationSelect({ value, locations, onChange }: {
-  value: string;
-  locations: StorageLocation[];
-  onChange: (value: string) => void;
-}) {
-  return (
-    <select value={value} required onChange={(event) => onChange(event.target.value)}>
-      <option value="">Select a location</option>
-      {locations.map((location) => (
-        <option key={location.id} value={location.id}>{location.code} · {location.name}</option>
-      ))}
-    </select>
-  );
-}
-
 const localTimestamp = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
-export function Timestamp({ value }: { value: string }) {
+export function formatTimestamp(value: string): string {
   const utc = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`;
-  return <time dateTime={utc}>{localTimestamp.format(new Date(utc))}</time>;
+  return localTimestamp.format(new Date(utc));
 }
