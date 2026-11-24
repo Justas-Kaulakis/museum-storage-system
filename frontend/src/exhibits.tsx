@@ -387,7 +387,10 @@ export function ExhibitDetail({ id }: { id: string }) {
         <>
           {editing && <ExhibitForm exhibit={exhibit} locations={data[2]} onSaved={saved} onCancel={() => setEditing(false)} />}
           <section className="panel" aria-labelledby="details-heading">
-            <div className="panel-heading"><h2 id="details-heading">Eksponato duomenys</h2></div>
+            <div className="panel-heading">
+              <h2 id="details-heading">Eksponato duomenys</h2>
+              <a className="button" href={`/api${path}/qr`} download>Atsisiųsti QR kodą</a>
+            </div>
             <dl className="fact-grid">
               <div><dt>Kategorija</dt><dd>{exhibit.category || "—"}</dd></div>
               <div><dt>Dabartinė saugojimo vieta</dt><dd><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></dd></div>

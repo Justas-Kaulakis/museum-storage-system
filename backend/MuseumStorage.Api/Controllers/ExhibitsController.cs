@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.Sqlite;
@@ -10,6 +11,7 @@ using SkiaSharp;
 using SQLitePCL;
 using ZXing;
 using ZXing.Common;
+using ZXing.QrCode;
 
 namespace MuseumStorage.Api.Controllers;
 
@@ -74,6 +76,42 @@ public class ExhibitsController : ControllerBase
     {
         var exhibit = await ExhibitsWithLocation.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
         return exhibit is null ? NotFound() : Ok(ToResponse(exhibit));
+    }
+
+    [HttpGet("{id:long}/qr")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> DownloadQr(long id, CancellationToken cancellationToken)
+    {
+        var code = await _dbContext.Exhibits.Where(x => x.Id == id)
+            .Select(x => x.Code).SingleOrDefaultAsync(cancellationToken);
+        if (code is null)
+            return NotFound();
+
+        var writer = new ZXing.SkiaSharp.BarcodeWriter
+        {
+            Format = BarcodeFormat.QR_CODE,
+            Options = new QrCodeEncodingOptions { Width = 512, Height = 512, Margin = 4, CharacterSet = "UTF-8" }
+        };
+
+        try
+        {
+            using var bitmap = writer.Write(code);
+            using var png = bitmap.Encode(SKEncodedImageFormat.Png, 100);
+            return File(png.ToArray(), "image/png", GetQrDownloadName(code));
+        }
+        catch (WriterException)
+        {
+            return UnprocessableEntity(new ProblemDetails { Title = "Eksponato kodas per ilgas QR kodui." });
+        }
+    }
+
+    private static string GetQrDownloadName(string code)
+    {
+        // Keep the download name within common filesystem limits, even for four-byte Unicode characters.
+        var name = string.Concat(code.EnumerateRunes().Take(60).Select(character =>
+            Rune.IsControl(character) || (character.IsAscii && "<>:\"/\\|?*".Contains((char)character.Value))
+                ? "_" : character.ToString()));
+        return $"{name}.png";
     }
 
     [HttpGet("{id:long}/storage-suitability")]

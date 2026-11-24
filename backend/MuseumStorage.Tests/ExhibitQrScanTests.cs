@@ -38,6 +38,67 @@ public sealed class ExhibitQrScanTests : IAsyncLifetime
     public Task DisposeAsync() => _connection.DisposeAsync().AsTask();
 
     [Theory]
+    [InlineData(ExhibitCode, ExhibitCode + ".png")]
+    [InlineData("ŽENKLAS/001", "ŽENKLAS_001.png")]
+    public async Task DownloadReturnsPngContainingOnlyTheExactExhibitCode(string code, string fileName)
+    {
+        await using var dbContext = CreateDbContext();
+        var exhibitId = _exhibitId;
+        if (code != ExhibitCode)
+        {
+            var exhibit = new Exhibit { Code = code, Name = "Sample", Status = ExhibitStatus.CheckedOut };
+            dbContext.Exhibits.Add(exhibit);
+            await dbContext.SaveChangesAsync();
+            exhibitId = exhibit.Id;
+        }
+
+        var result = await new ExhibitsController(dbContext).DownloadQr(exhibitId, CancellationToken.None);
+        var file = Assert.IsType<FileContentResult>(result);
+        Assert.Equal("image/png", file.ContentType);
+        Assert.Equal(fileName, file.FileDownloadName);
+
+        using var image = new MemoryStream(file.FileContents);
+        using var codec = SKCodec.Create(image);
+        Assert.Equal(SKEncodedImageFormat.Png, codec.EncodedFormat);
+        using var bitmap = SKBitmap.Decode(codec);
+        var decoded = Assert.IsType<Result>(new ZXing.SkiaSharp.BarcodeReader().Decode(bitmap));
+        Assert.Equal(BarcodeFormat.QR_CODE, decoded.BarcodeFormat);
+        Assert.Equal(code, decoded.Text);
+    }
+
+    [Fact]
+    public async Task DownloadReturnsNotFoundForUnknownExhibit()
+    {
+        await using var dbContext = CreateDbContext();
+        var result = await new ExhibitsController(dbContext).DownloadQr(long.MaxValue, CancellationToken.None);
+        Assert.IsType<NotFoundResult>(result);
+    }
+
+    [Fact]
+    public async Task ScanResolvesTheExhibitFromItsDownloadedQr()
+    {
+        await using var dbContext = CreateDbContext();
+        var download = await new ExhibitsController(dbContext).DownloadQr(_exhibitId, CancellationToken.None);
+        var file = Assert.IsType<FileContentResult>(download);
+        var scan = Assert.IsType<OkObjectResult>((await ScanAsync(file.FileContents, file.FileDownloadName)).Result);
+        var exhibit = Assert.IsType<ExhibitResponse>(scan.Value);
+        Assert.Equal(_exhibitId, exhibit.Id);
+        Assert.Equal(ExhibitCode, exhibit.Code);
+    }
+
+    [Fact]
+    public async Task DownloadReturnsClientErrorWhenCodeCannotFitInAQr()
+    {
+        await using var dbContext = CreateDbContext();
+        var exhibit = new Exhibit { Code = new string('x', 4000), Name = "Long code", Status = ExhibitStatus.CheckedOut };
+        dbContext.Exhibits.Add(exhibit);
+        await dbContext.SaveChangesAsync();
+
+        var result = await new ExhibitsController(dbContext).DownloadQr(exhibit.Id, CancellationToken.None);
+        Assert.IsType<UnprocessableEntityObjectResult>(result);
+    }
+
+    [Theory]
     [InlineData(SKEncodedImageFormat.Png)]
     [InlineData(SKEncodedImageFormat.Jpeg)]
     public async Task ScanReturnsExistingExhibitWithoutChangingItsStorage(SKEncodedImageFormat format)
