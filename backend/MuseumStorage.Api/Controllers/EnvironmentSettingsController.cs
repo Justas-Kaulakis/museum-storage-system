@@ -36,10 +36,16 @@ public class EnvironmentSettingsController : ControllerBase
         var settings = await query
             .Select(x => new EnvironmentSettingsValues
             {
-                FanOnTemperature = x.FanOnTemperature,
-                FanOffTemperature = x.FanOffTemperature,
-                FanOnHumidity = x.FanOnHumidity,
-                FanOffHumidity = x.FanOffHumidity,
+                CoolingOnTemperature = x.CoolingOnTemperature,
+                CoolingOffTemperature = x.CoolingOffTemperature,
+                HeatingOnTemperature = x.HeatingOnTemperature,
+                HeatingOffTemperature = x.HeatingOffTemperature,
+                HumidifierOnHumidity = x.HumidifierOnHumidity,
+                HumidifierOffHumidity = x.HumidifierOffHumidity,
+                DehumidifierOnHumidity = x.DehumidifierOnHumidity,
+                DehumidifierOffHumidity = x.DehumidifierOffHumidity,
+                MinLightLevel = x.MinLightLevel,
+                MaxLightLevel = x.MaxLightLevel,
                 TemperatureAlarm = x.TemperatureAlarm,
                 HumidityAlarm = x.HumidityAlarm
             })
@@ -52,27 +58,43 @@ public class EnvironmentSettingsController : ControllerBase
     public async Task<ActionResult<EnvironmentSettingsValues>> Put(
         long zoneId, EnvironmentSettingsValues settings, CancellationToken cancellationToken)
     {
-        if (!IsTemperatureInRange(settings.FanOnTemperature) ||
-            !IsTemperatureInRange(settings.FanOffTemperature) ||
+        if (!IsTemperatureInRange(settings.CoolingOnTemperature) || !IsTemperatureInRange(settings.CoolingOffTemperature) ||
+            !IsTemperatureInRange(settings.HeatingOnTemperature) || !IsTemperatureInRange(settings.HeatingOffTemperature) ||
             !IsTemperatureInRange(settings.TemperatureAlarm))
-            ModelState.AddModelError("Temperature", "Temperature thresholds must be between -40 and 80 °C.");
+            ModelState.AddModelError("Temperature", "Temperatūros ribos turi būti nuo −40 iki 80 °C.");
 
-        if (!IsHumidityInRange(settings.FanOnHumidity) ||
-            !IsHumidityInRange(settings.FanOffHumidity) ||
+        if (!IsHumidityInRange(settings.DehumidifierOnHumidity) || !IsHumidityInRange(settings.DehumidifierOffHumidity) ||
+            !IsHumidityInRange(settings.HumidifierOnHumidity) || !IsHumidityInRange(settings.HumidifierOffHumidity) ||
             !IsHumidityInRange(settings.HumidityAlarm))
-            ModelState.AddModelError("Humidity", "Humidity thresholds must be between 0 and 100%.");
+            ModelState.AddModelError("Humidity", "Drėgmės ribos turi būti nuo 0 iki 100 %.");
 
-        if (settings.FanOffTemperature >= settings.FanOnTemperature)
-            ModelState.AddModelError(nameof(settings.FanOffTemperature), "Fan-off temperature must be below fan-on temperature.");
+        if (settings.HeatingOnTemperature >= settings.HeatingOffTemperature)
+            ModelState.AddModelError(nameof(settings.HeatingOnTemperature), "Šildymo įjungimo temperatūra turi būti žemesnė už išjungimo temperatūrą.");
 
-        if (settings.FanOffHumidity >= settings.FanOnHumidity)
-            ModelState.AddModelError(nameof(settings.FanOffHumidity), "Fan-off humidity must be below fan-on humidity.");
+        if (settings.CoolingOffTemperature >= settings.CoolingOnTemperature)
+            ModelState.AddModelError(nameof(settings.CoolingOffTemperature), "Vėsinimo išjungimo temperatūra turi būti žemesnė už įjungimo temperatūrą.");
 
-        if (settings.TemperatureAlarm < settings.FanOnTemperature)
-            ModelState.AddModelError(nameof(settings.TemperatureAlarm), "Alarm temperature must be at or above fan-on temperature.");
+        if (settings.HeatingOffTemperature >= settings.CoolingOnTemperature || settings.HeatingOnTemperature > settings.CoolingOffTemperature)
+            ModelState.AddModelError(nameof(settings.HeatingOffTemperature), "Šildymas turi išsijungti iki įsijungiant vėsinimui, o vėsinimas turi išsijungti iki įsijungiant šildymui.");
 
-        if (settings.HumidityAlarm < settings.FanOnHumidity)
-            ModelState.AddModelError(nameof(settings.HumidityAlarm), "Alarm humidity must be at or above fan-on humidity.");
+        if (settings.TemperatureAlarm < settings.CoolingOnTemperature)
+            ModelState.AddModelError(nameof(settings.TemperatureAlarm), "Temperatūros aliarmo riba turi būti ne žemesnė už vėsinimo įjungimo temperatūrą.");
+
+        if (settings.HumidifierOnHumidity >= settings.HumidifierOffHumidity)
+            ModelState.AddModelError(nameof(settings.HumidifierOnHumidity), "Drėkintuvo įjungimo riba turi būti mažesnė už išjungimo ribą.");
+
+        if (settings.DehumidifierOffHumidity >= settings.DehumidifierOnHumidity)
+            ModelState.AddModelError(nameof(settings.DehumidifierOffHumidity), "Sausintuvo išjungimo riba turi būti mažesnė už įjungimo ribą.");
+
+        if (settings.HumidifierOffHumidity >= settings.DehumidifierOnHumidity || settings.HumidifierOnHumidity > settings.DehumidifierOffHumidity)
+            ModelState.AddModelError(nameof(settings.HumidifierOffHumidity), "Drėkintuvas ir sausintuvas turi išsijungti, kol dar neįsijungė kitas įrenginys.");
+
+        if (settings.HumidityAlarm < settings.DehumidifierOnHumidity)
+            ModelState.AddModelError(nameof(settings.HumidityAlarm), "Drėgmės aliarmo riba turi būti ne mažesnė už sausintuvo įjungimo ribą.");
+
+        if (!double.IsFinite(settings.MinLightLevel) || !double.IsFinite(settings.MaxLightLevel) ||
+            settings.MinLightLevel < 0 || settings.MinLightLevel >= settings.MaxLightLevel)
+            ModelState.AddModelError(nameof(settings.MinLightLevel), "Apšvietimo ribos turi būti neneigiamos, o mažiausia riba turi būti mažesnė už didžiausią.");
 
         if (!ModelState.IsValid)
             return ValidationProblem(statusCode: StatusCodes.Status400BadRequest, modelStateDictionary: ModelState);
@@ -80,10 +102,16 @@ public class EnvironmentSettingsController : ControllerBase
         var updated = await _dbContext.EnvironmentSettings
             .Where(x => x.StorageZoneId == zoneId)
             .ExecuteUpdateAsync(setters => setters
-                .SetProperty(x => x.FanOnTemperature, settings.FanOnTemperature)
-                .SetProperty(x => x.FanOffTemperature, settings.FanOffTemperature)
-                .SetProperty(x => x.FanOnHumidity, settings.FanOnHumidity)
-                .SetProperty(x => x.FanOffHumidity, settings.FanOffHumidity)
+                .SetProperty(x => x.CoolingOnTemperature, settings.CoolingOnTemperature)
+                .SetProperty(x => x.CoolingOffTemperature, settings.CoolingOffTemperature)
+                .SetProperty(x => x.HeatingOnTemperature, settings.HeatingOnTemperature)
+                .SetProperty(x => x.HeatingOffTemperature, settings.HeatingOffTemperature)
+                .SetProperty(x => x.HumidifierOnHumidity, settings.HumidifierOnHumidity)
+                .SetProperty(x => x.HumidifierOffHumidity, settings.HumidifierOffHumidity)
+                .SetProperty(x => x.DehumidifierOnHumidity, settings.DehumidifierOnHumidity)
+                .SetProperty(x => x.DehumidifierOffHumidity, settings.DehumidifierOffHumidity)
+                .SetProperty(x => x.MinLightLevel, settings.MinLightLevel)
+                .SetProperty(x => x.MaxLightLevel, settings.MaxLightLevel)
                 .SetProperty(x => x.TemperatureAlarm, settings.TemperatureAlarm)
                 .SetProperty(x => x.HumidityAlarm, settings.HumidityAlarm), cancellationToken);
 

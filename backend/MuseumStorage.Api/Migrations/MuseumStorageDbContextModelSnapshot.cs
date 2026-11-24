@@ -22,19 +22,37 @@ namespace MuseumStorage.Api.Migrations
                     b.Property<long>("StorageZoneId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<double>("FanOffHumidity")
+                    b.Property<double>("CoolingOffTemperature")
                         .HasColumnType("REAL");
 
-                    b.Property<double>("FanOffTemperature")
+                    b.Property<double>("CoolingOnTemperature")
                         .HasColumnType("REAL");
 
-                    b.Property<double>("FanOnHumidity")
+                    b.Property<double>("DehumidifierOffHumidity")
                         .HasColumnType("REAL");
 
-                    b.Property<double>("FanOnTemperature")
+                    b.Property<double>("DehumidifierOnHumidity")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("HeatingOffTemperature")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("HeatingOnTemperature")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("HumidifierOffHumidity")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("HumidifierOnHumidity")
                         .HasColumnType("REAL");
 
                     b.Property<double>("HumidityAlarm")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("MaxLightLevel")
+                        .HasColumnType("REAL");
+
+                    b.Property<double>("MinLightLevel")
                         .HasColumnType("REAL");
 
                     b.Property<double>("TemperatureAlarm")
@@ -60,6 +78,24 @@ namespace MuseumStorage.Api.Migrations
 
                     b.Property<string>("Description")
                         .HasColumnType("TEXT");
+
+                    b.Property<double?>("MaxHumidity")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MaxLightLevel")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MaxTemperature")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MinHumidity")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MinLightLevel")
+                        .HasColumnType("REAL");
+
+                    b.Property<double?>("MinTemperature")
+                        .HasColumnType("REAL");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -96,18 +132,30 @@ namespace MuseumStorage.Api.Migrations
                     b.Property<bool>("AlarmEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<bool>("CoolingEnabled")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("DehumidifierEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("DeviceId")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("FanEnabled")
+                    b.Property<bool>("HeatingEnabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("HumidifierEnabled")
                         .HasColumnType("INTEGER");
 
                     b.Property<double>("Humidity")
                         .HasColumnType("REAL");
+
+                    b.Property<int>("LightIntensity")
+                        .HasColumnType("INTEGER");
 
                     b.Property<double>("LightLevel")
                         .HasColumnType("REAL");

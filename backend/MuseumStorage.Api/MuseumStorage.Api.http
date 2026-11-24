@@ -14,7 +14,11 @@ Content-Type: application/json
   "temperature": 22.5,
   "humidity": 53.0,
   "lightLevel": 500,
-  "fanEnabled": false,
+  "coolingEnabled": false,
+  "heatingEnabled": false,
+  "humidifierEnabled": false,
+  "dehumidifierEnabled": false,
+  "lightIntensity": 40,
   "alarmEnabled": false
 }
 
@@ -36,10 +40,16 @@ PUT {{MuseumStorage.Api_HostAddress}}/api/storage-zones/{{ZoneId}}/environment-s
 Content-Type: application/json
 
 {
-  "fanOnTemperature": 26.0,
-  "fanOffTemperature": 25.0,
-  "fanOnHumidity": 70.0,
-  "fanOffHumidity": 65.0,
+  "coolingOnTemperature": 26.0,
+  "coolingOffTemperature": 25.0,
+  "heatingOnTemperature": 18.0,
+  "heatingOffTemperature": 19.0,
+  "humidifierOnHumidity": 35.0,
+  "humidifierOffHumidity": 40.0,
+  "dehumidifierOnHumidity": 70.0,
+  "dehumidifierOffHumidity": 65.0,
+  "minLightLevel": 300,
+  "maxLightLevel": 700,
   "temperatureAlarm": 30.0,
   "humidityAlarm": 80.0
 }
@@ -89,7 +99,12 @@ Content-Type: application/json
 {
   "code": "EXHIBIT-DEMO-0001",
   "name": "Ceramic Bowl",
-  "status": "CheckedOut"
+  "status": "CheckedOut",
+  "minTemperature": 18,
+  "maxTemperature": 22,
+  "minHumidity": 40,
+  "maxHumidity": 60,
+  "maxLightLevel": 200
 }
 
 ###
@@ -100,6 +115,11 @@ Content-Type: application/json
 {
   "storageLocationId": {{createCheckInLocation.response.body.$.id}}
 }
+
+###
+
+GET {{MuseumStorage.Api_HostAddress}}/api/exhibits/{{createExhibit.response.body.$.id}}/storage-suitability
+Accept: application/json
 
 ###
 

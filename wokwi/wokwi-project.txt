@@ -49,23 +49,31 @@ https://docs.wokwi.com/guides/esp32-wifi#the-private-gateway
 
 Manual checks
 
-1. Start with the default settings and DHT22 values of 22.5 C and 53%.
-   Confirm the fan and alarm are off and Serial prints "Telemetry sent".
+1. Start with the default settings, 22.5 C, 53% humidity, and 500 lx.
+   Confirm the actuators and alarm are off and Serial prints "Telemetry sent".
    Check for a recent reading with deviceId museum-storage-01.
 
 Invoke-RestMethod -Uri 'http://localhost:5054/api/sensor-readings?deviceId=museum-storage-01'
 
-2. Set the DHT22 to 26 C / 53%, then 22.5 C / 70%. Test each from
-   22.5 C / 53% and confirm the fan turns on and the alarm stays off.
-   While the fan is on, test 25.5 C / 65% and 25 C / 67%. Confirm it
-   stays on until both readings reach 25 C / 65% or below.
-3. Test 30 C / 53% and 22.5 C / 80%. Both the fan and alarm should turn on.
+2. Set the temperature to 26, 25.5, and 25 C. The cooling fan turns on,
+   stays on, then turns off. Test 18, 18.5, and 19 C for the heater.
+   At 22.5 C, test humidity at 35, 38, and 40% for the humidifier and at
+   70, 67, and 65% for the dehumidifier.
+3. Test 30 C and 80% humidity separately. Either triggers the alarm.
+   Set the light sensor below 300 lx to increase LED intensity, between
+   300 and 700 lx to hold it, and above 700 lx to decrease it. The white
+   LED simulates the commanded output independently of the photoresistor.
 4. Set the DHT22 to 24 C / 53% and send the settings below in PowerShell.
    Within one refresh interval (about 30 simulated seconds), look for
    "Environment settings applied" and check that the fan turns on.
 
 $wokwiZone = Invoke-RestMethod -Uri http://localhost:5054/api/storage-zones | Where-Object DeviceId -eq 'museum-storage-01'
-Invoke-RestMethod -Method Put -Uri "http://localhost:5054/api/storage-zones/$($wokwiZone.id)/environment-settings" -ContentType application/json -Body (@{fanOnTemperature=24;fanOffTemperature=23;fanOnHumidity=70;fanOffHumidity=65;temperatureAlarm=30;humidityAlarm=80} | ConvertTo-Json)
+$wokwiSettingsUri = "http://localhost:5054/api/storage-zones/$($wokwiZone.id)/environment-settings"
+$wokwiOriginalSettings = Invoke-RestMethod -Uri $wokwiSettingsUri | ConvertTo-Json
+$wokwiTestSettings = $wokwiOriginalSettings | ConvertFrom-Json
+$wokwiTestSettings.coolingOnTemperature = 24
+$wokwiTestSettings.coolingOffTemperature = 23
+Invoke-RestMethod -Method Put -Uri $wokwiSettingsUri -ContentType application/json -Body ($wokwiTestSettings | ConvertTo-Json)
 
 5. Stop the backend while Wokwi keeps running. Confirm Serial reports
    failures and the OLED still updates. Alternate between 23 C and 24 C at
@@ -88,5 +96,6 @@ if (now >= 45000 && now < 65000) {
     continue;
 }
 
-Restore the backend defaults after testing by repeating the PUT with
-fanOnTemperature=26 and fanOffTemperature=25.
+Restore the original settings after testing.
+
+Invoke-RestMethod -Method Put -Uri $wokwiSettingsUri -ContentType application/json -Body $wokwiOriginalSettings

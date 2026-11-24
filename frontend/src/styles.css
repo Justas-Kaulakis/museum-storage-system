@@ -196,9 +196,10 @@ textarea { resize: vertical; }
 .inline-form label { flex: 1 1 200px; max-width: 430px; }
 .form-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 15px; }
 .field-grid + .state-text { margin-top: 12px; }
-.threshold-row { display: grid; grid-template-columns: 95px minmax(0, 190px) minmax(0, 190px); align-items: center; gap: 10px 15px; }
-.threshold-row + .threshold-row { margin-top: 12px; }
-.threshold-row h3 { align-self: end; padding-bottom: 8px; }
+.setting-group + .setting-group { margin-top: 18px; }
+.setting-group h3, .condition-fields legend { margin-bottom: 8px; }
+.condition-fields { margin-top: 16px; }
+.suitability-table { min-width: 460px; }
 .success-text { color: #24593c; font-size: 0.9rem; font-weight: 600; }
 .notice { padding: 10px 13px; border: 1px solid; border-radius: 5px; }
 .notice-error { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 15px; color: #843029; border-color: #e6c2bb; background: #fff2ef; }
@@ -211,8 +212,6 @@ textarea { resize: vertical; }
   .measurement { padding: 15px 9px; }
   .measurement dt { font-size: 0.875rem; }
   .panel-heading, .form-body, .fact-grid, .device-states { padding-inline: 13px; }
-  .threshold-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .threshold-row h3 { grid-column: 1 / -1; padding: 0; }
   .field-grid, .fact-grid { grid-template-columns: minmax(0, 1fr); }
   th, td { padding-inline: 13px; }
 }

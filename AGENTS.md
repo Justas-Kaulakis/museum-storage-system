@@ -19,7 +19,7 @@ The embedded controller must locally:
 - read temperature;
 - read humidity;
 - read light level;
-- control the fan;
+- control the cooling fan, heater, humidifier, dehumidifier, and lighting;
 - control the buzzer/alarm;
 - show local status;
 - continue using the last valid environmental configuration when the server is unavailable.
@@ -72,18 +72,20 @@ Simulation hardware:
 - Wokwi photoresistor sensor;
 - SSD1306 128x64 OLED;
 - relay module;
-- LED as the fan/load indicator;
+- LED as the cooling fan/load indicator, plus LEDs for the heater, humidifier, dehumidifier, and PWM-controlled lighting;
 - buzzer.
 
 The Wokwi simulation is a development aid only. Keep application/control logic portable so it can later be moved to Arduino Nano 33 IoT.
 
 Current physical control logic:
-- fan turns on when temperature >= 26.0 C OR humidity >= 70.0%;
-- fan turns off only when temperature <= 25.0 C AND humidity <= 65.0%;
-- this hysteresis is intentional;
+- cooling turns on at 26 °C and off at 25 °C;
+- heating turns on at 18 °C and off at 19 °C;
+- humidification turns on at 35% and off at 40%;
+- dehumidification turns on at 70% and off at 65%;
+- lighting increases below 300 lx and decreases above 700 lx in 10-point PWM steps;
 - alarm turns on when temperature >= 30.0 C OR humidity >= 80.0%;
 - the simulated relay is active-low;
-- fan control and alarm decisions are made locally on the MCU.
+- all actuator and alarm decisions are made locally on the MCU.
 
 These values are startup defaults. The ESP32 sends telemetry and fetches environmental settings from the backend. It validates settings before applying them and keeps the last valid values in memory during an outage.
 
@@ -123,17 +125,16 @@ The complete system should eventually support:
 - periodically report measurements to the server;
 - store measurement history;
 - display current values in the Web UI;
-- display current fan state;
+- display actuator states and lighting intensity;
 - display current alarm state.
 
 ### Environmental control
-- configurable fan-on temperature;
-- configurable fan-off temperature;
-- configurable fan-on humidity;
-- configurable fan-off humidity;
+- configurable cooling and heating temperature thresholds;
+- configurable humidifier and dehumidifier humidity thresholds;
+- configurable minimum and maximum ambient light thresholds;
 - configurable critical temperature;
 - configurable critical humidity;
-- local fan control using temperature and humidity;
+- local control using temperature, humidity, and measured light;
 - local alarm/buzzer control;
 - hysteresis to prevent relay chattering;
 - continued local operation if the server is unavailable.
@@ -229,6 +230,7 @@ The backend persists sensor readings, environmental settings, exhibits, storage 
 
 - POST /api/sensor-readings stores ESP32 telemetry. GET /api/sensor-readings returns recent readings newest-first and can filter by deviceId. Zones are associated with telemetry through that device ID.
 - GET and PUT /api/storage-zones/{id}/environment-settings read and update the thresholds for that zone. The Wokwi ESP32 simulates one zone controller and fetches its thresholds with GET /api/environment-settings?deviceId=museum-storage-01.
+- Exhibits may define optional temperature, humidity, and light ranges. GET /api/exhibits/{id}/storage-suitability compares them with the latest reading from the exhibit's current zone. Exhibit ranges never control the ESP32.
 - /api/storage-zones, /api/storage-locations, and /api/exhibits support listing, retrieving, creating, updating, and deleting registry entries. Locations require an existing zone and cannot be deleted while they contain exhibits. Zones cannot be deleted while they contain locations.
 - GET /api/exhibits accepts optional search, category, status, zoneId, and storageLocationId filters. Exhibits can also be looked up by code. The registry page filters zones and locations and links locations to the filtered exhibit list.
 - POST /api/exhibits/scan-qr provides QR-based exhibit lookup.

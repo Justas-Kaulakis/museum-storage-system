@@ -14,20 +14,32 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
 {
     private static readonly EnvironmentSettingsValues DefaultSettings = new()
     {
-        FanOnTemperature = 26.0,
-        FanOffTemperature = 25.0,
-        FanOnHumidity = 70.0,
-        FanOffHumidity = 65.0,
+        CoolingOnTemperature = 26.0,
+        CoolingOffTemperature = 25.0,
+        HeatingOnTemperature = 18,
+        HeatingOffTemperature = 19,
+        DehumidifierOnHumidity = 70.0,
+        DehumidifierOffHumidity = 65.0,
+        HumidifierOnHumidity = 35,
+        HumidifierOffHumidity = 40,
+        MinLightLevel = 300,
+        MaxLightLevel = 700,
         TemperatureAlarm = 30.0,
         HumidityAlarm = 80.0
     };
 
     private static readonly EnvironmentSettingsValues UpdatedSettings = new()
     {
-        FanOnTemperature = 27.0,
-        FanOffTemperature = 24.5,
-        FanOnHumidity = 72.0,
-        FanOffHumidity = 64.0,
+        CoolingOnTemperature = 27.0,
+        CoolingOffTemperature = 24.5,
+        HeatingOnTemperature = 17,
+        HeatingOffTemperature = 20,
+        DehumidifierOnHumidity = 72.0,
+        DehumidifierOffHumidity = 64.0,
+        HumidifierOnHumidity = 32,
+        HumidifierOffHumidity = 42,
+        MinLightLevel = 200,
+        MaxLightLevel = 600,
         TemperatureAlarm = 27.0,
         HumidityAlarm = 72.0
     };
@@ -121,8 +133,38 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
         foreach (var zone in zones)
         {
             Assert.Null(zone.DeviceId);
-            Assert.Equal(UpdatedSettings, GetOk(await controller.Get(zone.Id, CancellationToken.None)));
+            var expected = DefaultSettings with
+            {
+                CoolingOnTemperature = 27, CoolingOffTemperature = 24.5, DehumidifierOnHumidity = 72,
+                DehumidifierOffHumidity = 64, TemperatureAlarm = 27, HumidityAlarm = 72
+            };
+            Assert.Equal(expected, GetOk(await controller.Get(zone.Id, CancellationToken.None)));
         }
+    }
+
+    [Fact]
+    public async Task MigrationPreservesLowLegacyThresholdsAndFitsTheNewSettingsBelowThem()
+    {
+        const string PreviousMigration = "20261124211714_AddZoneEnvironmentSettings";
+        await using var dbContext = CreateDbContext();
+        await dbContext.GetService<IMigrator>().MigrateAsync(PreviousMigration);
+        await dbContext.Database.ExecuteSqlRawAsync("""
+            UPDATE "EnvironmentSettings"
+            SET "FanOnTemperature" = 18, "FanOffTemperature" = 17,
+                "FanOnHumidity" = 35, "FanOffHumidity" = 30;
+            """);
+        await dbContext.Database.MigrateAsync();
+
+        var controller = new EnvironmentSettingsController(dbContext);
+        var migrated = GetOk(await controller.Get(1, CancellationToken.None));
+        Assert.Equal(DefaultSettings with
+        {
+            CoolingOnTemperature = 18, CoolingOffTemperature = 17,
+            HeatingOnTemperature = 16, HeatingOffTemperature = 17,
+            DehumidifierOnHumidity = 35, DehumidifierOffHumidity = 30,
+            HumidifierOnHumidity = 25, HumidifierOffHumidity = 30
+        }, migrated);
+        Assert.Equal(migrated, GetOk(await controller.Put(1, migrated, CancellationToken.None)));
     }
 
     [Fact]
@@ -139,7 +181,11 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
         Assert.Equal(deviceId, mapped.DeviceId);
         Assert.Equal(deviceId, GetOk(await zones.GetById(zoneA.Id, CancellationToken.None)).DeviceId);
         var settings = new EnvironmentSettingsController(dbContext);
-        var coolerZone = DefaultSettings with { FanOnTemperature = 18, FanOffTemperature = 17 };
+        var coolerZone = DefaultSettings with
+        {
+            CoolingOnTemperature = 18, CoolingOffTemperature = 17,
+            HeatingOnTemperature = 15, HeatingOffTemperature = 16, MinLightLevel = 120
+        };
         Assert.Equal(coolerZone, GetOk(await settings.Put(zoneA.Id, coolerZone, CancellationToken.None)));
         Assert.Equal(DefaultSettings, GetOk(await settings.Get(zoneB.Id, CancellationToken.None)));
         Assert.Equal(coolerZone, GetOk(await settings.GetByDeviceId(deviceId, CancellationToken.None)));
@@ -191,16 +237,16 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
     [Theory]
     [InlineData(27.0)]
     [InlineData(28.0)]
-    public Task PutRejectsFanOffTemperatureAtOrAboveFanOn(double fanOffTemperature) =>
-        AssertRejectedAsync(UpdatedSettings with { FanOffTemperature = fanOffTemperature },
-            nameof(EnvironmentSettingsValues.FanOffTemperature));
+    public Task PutRejectsCoolingOffTemperatureAtOrAboveFanOn(double fanOffTemperature) =>
+        AssertRejectedAsync(UpdatedSettings with { CoolingOffTemperature = fanOffTemperature },
+            nameof(EnvironmentSettingsValues.CoolingOffTemperature));
 
     [Theory]
     [InlineData(72.0)]
     [InlineData(73.0)]
-    public Task PutRejectsFanOffHumidityAtOrAboveFanOn(double fanOffHumidity) =>
-        AssertRejectedAsync(UpdatedSettings with { FanOffHumidity = fanOffHumidity },
-            nameof(EnvironmentSettingsValues.FanOffHumidity));
+    public Task PutRejectsDehumidifierOffHumidityAtOrAboveFanOn(double fanOffHumidity) =>
+        AssertRejectedAsync(UpdatedSettings with { DehumidifierOffHumidity = fanOffHumidity },
+            nameof(EnvironmentSettingsValues.DehumidifierOffHumidity));
 
     [Fact]
     public Task PutRejectsTemperatureAlarmBelowFanOn() =>
@@ -214,7 +260,7 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
 
     [Fact]
     public Task PutRejectsTemperatureBelowRange() =>
-        AssertRejectedAsync(UpdatedSettings with { FanOffTemperature = -40.1 }, "Temperature");
+        AssertRejectedAsync(UpdatedSettings with { CoolingOffTemperature = -40.1 }, "Temperature");
 
     [Theory]
     [InlineData(80.1)]
@@ -225,11 +271,36 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
 
     [Fact]
     public Task PutRejectsHumidityBelowRange() =>
-        AssertRejectedAsync(UpdatedSettings with { FanOffHumidity = -0.1 }, "Humidity");
+        AssertRejectedAsync(UpdatedSettings with { DehumidifierOffHumidity = -0.1 }, "Humidity");
 
     [Fact]
     public Task PutRejectsHumidityAboveRange() =>
         AssertRejectedAsync(UpdatedSettings with { HumidityAlarm = 100.1 }, "Humidity");
+
+    [Theory]
+    [InlineData(18, 26, 25)]
+    [InlineData(24, 25.5, 23)]
+    public Task PutRejectsOverlappingHeatingAndCooling(double heatingOn, double heatingOff, double coolingOff) =>
+        AssertRejectedAsync(DefaultSettings with
+        {
+            HeatingOnTemperature = heatingOn, HeatingOffTemperature = heatingOff, CoolingOffTemperature = coolingOff
+        }, nameof(EnvironmentSettingsValues.HeatingOffTemperature));
+
+    [Theory]
+    [InlineData(35, 70, 65)]
+    [InlineData(64, 68, 63)]
+    public Task PutRejectsOverlappingHumidifyingAndDehumidifying(double humidifierOn, double humidifierOff, double dehumidifierOff) =>
+        AssertRejectedAsync(DefaultSettings with
+        {
+            HumidifierOnHumidity = humidifierOn, HumidifierOffHumidity = humidifierOff, DehumidifierOffHumidity = dehumidifierOff
+        }, nameof(EnvironmentSettingsValues.HumidifierOffHumidity));
+
+    [Theory]
+    [InlineData(-1, 700)]
+    [InlineData(700, 700)]
+    [InlineData(701, 700)]
+    public Task PutRejectsInvalidLightingRange(double min, double max) =>
+        AssertRejectedAsync(DefaultSettings with { MinLightLevel = min, MaxLightLevel = max }, nameof(EnvironmentSettingsValues.MinLightLevel));
 
     [Fact]
     public async Task SensorReadingsCanStillBeCreatedAndRetrieved()
@@ -243,6 +314,10 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
             Humidity = 71.0,
             LightLevel = 13.0,
             FanEnabled = true,
+            HeatingEnabled = false,
+            HumidifierEnabled = true,
+            DehumidifierEnabled = false,
+            LightIntensity = 40,
             AlarmEnabled = false
         };
 
@@ -259,7 +334,11 @@ public sealed class EnvironmentSettingsTests : IAsyncLifetime
         Assert.Equal(request.Temperature, reading.Temperature);
         Assert.Equal(request.Humidity, reading.Humidity);
         Assert.Equal(request.LightLevel, reading.LightLevel);
-        Assert.Equal(request.FanEnabled, reading.FanEnabled);
+        Assert.Equal(request.FanEnabled, reading.CoolingEnabled);
+        Assert.Equal(request.HeatingEnabled, reading.HeatingEnabled);
+        Assert.Equal(request.HumidifierEnabled, reading.HumidifierEnabled);
+        Assert.Equal(request.DehumidifierEnabled, reading.DehumidifierEnabled);
+        Assert.Equal(request.LightIntensity, reading.LightIntensity);
         Assert.Equal(request.AlarmEnabled, reading.AlarmEnabled);
     }
 

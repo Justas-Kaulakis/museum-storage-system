@@ -13,7 +13,7 @@ Projektą sudaro 3 pagrindinės dalys:
 ```mermaid
 flowchart LR
     S["DHT22 + LDR"] --> ESP["ESP32 / Wokwi"]
-    ESP --> O["Relė / ventiliatorius, buzzer, OLED"]
+    ESP --> O["Vėsinimas, šildymas, drėgmė, PWM apšvietimas, aliarmas, OLED"]
     ESP -->|"POST telemetrija"| API["ASP.NET Core API"]
     API -->|"GET nustatymai"| ESP
     FE["React Web UI"] <-->|"REST API"| API
@@ -21,7 +21,7 @@ flowchart LR
     FE -->|"QR nuotrauka"| API
 ```
 
-Svarbiausias principas: **ventiliatoriaus ir aliarmo sprendimus priima pats ESP32**. Serveris tik pateikia ribines reikšmes ir saugo duomenis. Jei backend neveikia, aplinkos stebėjimas ir apsauga Wokwi simuliacijoje toliau veikia.
+**ESP32 pats valdo vėsinimą, šildymą, drėgmę, apšvietimą ir aliarmą** pagal zonos nustatymus. Jei serveris neveikia, ESP32 toliau naudoja paskutines tinkamas reikšmes.
 
 ---
 
@@ -52,6 +52,7 @@ Backend atsakingas už:
 
 - jutiklių matavimų saugojimą;
 - kiekvienos saugojimo zonos aplinkos ribinių reikšmių saugojimą;
+- eksponatų leistinų laikymo sąlygų palyginimą su naujausiais jų zonos rodmenimis. Eksponato reikalavimai nepatenka į ESP32 nustatymų atsakymą;
 - eksponatų, saugojimo zonų ir vietų registrą;
 - padėjimo, paėmimo ir perkėlimo operacijas;
 - operacijų istoriją;
@@ -156,8 +157,9 @@ Naudojama:
 
 - ESP32 DevKit;
 - DHT22 temperatūrai ir drėgmei;
-- LDR apšvietimui;
+- LDR apšvietimui matuoti ir PWM valdomą LED apšvietimui imituoti;
 - relay + LED ventiliatoriaus simuliacijai;
+- atskirus LED šildymui, drėkinimui ir sausinimui imituoti;
 - buzzer aliarmui;
 - SSD1306 OLED;
 - Wi-Fi ir HTTP;
@@ -168,7 +170,7 @@ Pagrindiniai failai:
 ```text
 wokwi/
 ├── sketch.ino               pagrindinis firmware
-├── environment-control.h    fan/alarm logika ir ribinės reikšmės
+├── environment-control.h    vykdiklių ir aliarmo logika
 ├── diagram.json             virtuali schema
 ├── libraries.txt            Arduino bibliotekos
 └── wokwi.toml               VS Code Wokwi konfigūracija
@@ -230,7 +232,7 @@ Serverio settings gaunami maždaug kas 30 s, patikrinami ir tik tada perduodami 
 
 ## Ką svarbu suprasti ataskaitai
 
-- ESP32 priima realaus laiko fan/alarm sprendimus lokaliai.
+- ESP32 priima realaus laiko vykdiklių ir aliarmo sprendimus lokaliai.
 - Backend nėra būtinas aplinkos apsaugai, bet reikalingas duomenų saugojimui ir Web UI.
 - Frontend tiesiogiai su DB nebendrauja – viskas vyksta per REST API.
 - EF Core naudojamas C# objektams saugoti SQLite DB.

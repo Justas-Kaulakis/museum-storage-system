@@ -16,6 +16,10 @@ constexpr int DHT_PIN = 15;
 constexpr int LDR_PIN = 34;
 constexpr int RELAY_PIN = 26;
 constexpr int BUZZER_PIN = 27;
+constexpr int HEATER_PIN = 32;
+constexpr int HUMIDIFIER_PIN = 33;
+constexpr int DEHUMIDIFIER_PIN = 25;
+constexpr int LIGHTING_PIN = 23;
 constexpr int OLED_SDA = 21;
 constexpr int OLED_SCL = 22;
 
@@ -45,7 +49,11 @@ struct SensorReading
     float temperature;
     float humidity;
     float lux;
-    bool fanEnabled;
+    bool coolingEnabled;
+    bool heatingEnabled;
+    bool humidifierEnabled;
+    bool dehumidifierEnabled;
+    int lightIntensity;
     bool alarmEnabled;
     bool valid;
 };
@@ -54,19 +62,17 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 DHTesp dht;
 EnvironmentSettings environmentSettings = DEFAULT_ENVIRONMENT_SETTINGS;
 bool displayReady = false;
-bool fanEnabled = false;
+bool coolingEnabled = false;
+bool heatingEnabled = false;
+bool humidifierEnabled = false;
+bool dehumidifierEnabled = false;
+int lightIntensity = 0;
 bool alarmEnabled = false;
 QueueHandle_t settingsQueue = nullptr;
 QueueHandle_t readingsQueue = nullptr;
 
 void updateDisplay(const SensorReading& reading);
 void sendSensorReading(const SensorReading& reading);
-
-void setFan(bool enabled)
-{
-    fanEnabled = enabled;
-    digitalWrite(RELAY_PIN, enabled ? LOW : HIGH);
-}
 
 void setAlarm(bool enabled)
 {
@@ -83,17 +89,20 @@ void setAlarm(bool enabled)
     }
 }
 
-void updateFan(float temperature, float humidity)
+void updateActuators(float temperature, float humidity)
 {
-    bool enabled = nextFanState(environmentSettings, fanEnabled, temperature, humidity);
-    if (enabled != fanEnabled) {
-        setFan(enabled);
-        Serial.println(enabled ? "Fan turned ON" : "Fan turned OFF");
-    }
-}
-
-void updateAlarm(float temperature, float humidity)
-{
+    coolingEnabled = nextCoolingState(environmentSettings, coolingEnabled, temperature);
+    heatingEnabled = nextHeatingState(environmentSettings, heatingEnabled, temperature);
+    humidifierEnabled = nextHumidifierState(environmentSettings, humidifierEnabled, humidity);
+    dehumidifierEnabled = nextDehumidifierState(environmentSettings, dehumidifierEnabled, humidity);
+    if (coolingEnabled)
+        digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(RELAY_PIN, coolingEnabled ? LOW : HIGH);
+    digitalWrite(HEATER_PIN, heatingEnabled ? HIGH : LOW);
+    if (dehumidifierEnabled)
+        digitalWrite(HUMIDIFIER_PIN, LOW);
+    digitalWrite(DEHUMIDIFIER_PIN, dehumidifierEnabled ? HIGH : LOW);
+    digitalWrite(HUMIDIFIER_PIN, humidifierEnabled ? HIGH : LOW);
     setAlarm(shouldAlarm(environmentSettings, temperature, humidity));
 }
 
@@ -121,36 +130,38 @@ void updateDisplay(const SensorReading& reading)
     display.setTextWrap(false);
 
     display.setCursor(0, 0);
-    display.print("Museum Storage");
-    display.setCursor(0, 14);
-    display.print("Temp: ");
+    display.print("T:");
     if (reading.valid)
         display.print(reading.temperature, 1);
     else
         display.print("--");
-    display.print(" C");
-
-    display.setCursor(0, 26);
-    display.print("Hum:  ");
+    display.print("C H:");
     if (reading.valid)
         display.print(reading.humidity, 1);
     else
         display.print("--");
-    display.print(" %");
+    display.print("%");
 
-    display.setCursor(0, 38);
-    display.print("Light: ");
+    display.setCursor(0, 12);
+    display.print("Lux: ");
     if (reading.lux > 99999)
         display.print(">99999");
     else
         display.print(reading.lux, 0);
-    display.print(" lx");
-
-    display.setCursor(0, 50);
-    display.print("Fan: ");
-    display.print(reading.fanEnabled ? "ON" : "OFF");
-    display.setCursor(64, 50);
-    display.print("Alarm:");
+    display.setCursor(0, 24);
+    display.print("C:");
+    display.print(reading.coolingEnabled ? "ON" : "OFF");
+    display.print(" H:");
+    display.print(reading.heatingEnabled ? "ON" : "OFF");
+    display.setCursor(0, 36);
+    display.print("HU:");
+    display.print(reading.humidifierEnabled ? "ON" : "OFF");
+    display.print(" DH:");
+    display.print(reading.dehumidifierEnabled ? "ON" : "OFF");
+    display.setCursor(0, 48);
+    display.print("Light:");
+    display.print(reading.lightIntensity);
+    display.print("% Alarm:");
     display.print(reading.alarmEnabled ? "ON" : "OK");
     display.display();
 }
@@ -162,14 +173,15 @@ void updateEnvironment()
 
     TempAndHumidity data = dht.getTempAndHumidity();
     bool valid = isfinite(data.temperature) && isfinite(data.humidity);
-    if (valid) {
-        updateFan(data.temperature, data.humidity);
-        updateAlarm(data.temperature, data.humidity);
-    } else {
+    if (valid)
+        updateActuators(data.temperature, data.humidity);
+    else
         Serial.println("DHT22 read failed");
-    }
 
-    SensorReading reading{data.temperature, data.humidity, readLux(), fanEnabled, alarmEnabled, valid};
+    float lux = readLux();
+    lightIntensity = nextLightIntensity(environmentSettings, lightIntensity, lux);
+    analogWrite(LIGHTING_PIN, (lightIntensity * 255 + 50) / 100);
+    SensorReading reading{data.temperature, data.humidity, lux, coolingEnabled, heatingEnabled, humidifierEnabled, dehumidifierEnabled, lightIntensity, alarmEnabled, valid};
     if (displayReady)
         updateDisplay(reading);
     if (readingsQueue)
@@ -191,7 +203,11 @@ void sendSensorReading(const SensorReading& reading)
     json["temperature"] = reading.temperature;
     json["humidity"] = reading.humidity;
     json["lightLevel"] = reading.lux;
-    json["fanEnabled"] = reading.fanEnabled;
+    json["coolingEnabled"] = reading.coolingEnabled;
+    json["heatingEnabled"] = reading.heatingEnabled;
+    json["humidifierEnabled"] = reading.humidifierEnabled;
+    json["dehumidifierEnabled"] = reading.dehumidifierEnabled;
+    json["lightIntensity"] = reading.lightIntensity;
     json["alarmEnabled"] = reading.alarmEnabled;
     String body;
     serializeJson(json, body);
@@ -246,10 +262,16 @@ void fetchEnvironmentSettings()
         return;
     }
     EnvironmentSettings candidate{
-        readThreshold(json["fanOnTemperature"]),
-        readThreshold(json["fanOffTemperature"]),
-        readThreshold(json["fanOnHumidity"]),
-        readThreshold(json["fanOffHumidity"]),
+        readThreshold(json["coolingOnTemperature"]),
+        readThreshold(json["coolingOffTemperature"]),
+        readThreshold(json["heatingOnTemperature"]),
+        readThreshold(json["heatingOffTemperature"]),
+        readThreshold(json["humidifierOnHumidity"]),
+        readThreshold(json["humidifierOffHumidity"]),
+        readThreshold(json["dehumidifierOnHumidity"]),
+        readThreshold(json["dehumidifierOffHumidity"]),
+        readThreshold(json["minLightLevel"]),
+        readThreshold(json["maxLightLevel"]),
         readThreshold(json["temperatureAlarm"]),
         readThreshold(json["humidityAlarm"])
     };
@@ -320,8 +342,16 @@ void setup()
 
     pinMode(RELAY_PIN, OUTPUT);
     pinMode(BUZZER_PIN, OUTPUT);
+    pinMode(HEATER_PIN, OUTPUT);
+    pinMode(HUMIDIFIER_PIN, OUTPUT);
+    pinMode(DEHUMIDIFIER_PIN, OUTPUT);
+    pinMode(LIGHTING_PIN, OUTPUT);
     pinMode(LDR_PIN, INPUT);
-    setFan(false);
+    digitalWrite(RELAY_PIN, HIGH);
+    digitalWrite(HEATER_PIN, LOW);
+    digitalWrite(HUMIDIFIER_PIN, LOW);
+    digitalWrite(DEHUMIDIFIER_PIN, LOW);
+    analogWrite(LIGHTING_PIN, 0);
     noTone(BUZZER_PIN);
 
     analogReadResolution(12);

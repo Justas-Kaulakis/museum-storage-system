@@ -418,6 +418,108 @@ public sealed class StorageRegistryTests : IAsyncLifetime
         AssertValidationError(await controller.GetAll(ct, status: "Invalid"), "status");
     }
 
+    [Fact]
+    public async Task ExhibitRequirementsRoundTripAndCanBeCleared()
+    {
+        var request = SampleExhibit with
+        {
+            MinTemperature = 18, MaxTemperature = 22, MinHumidity = 40, MaxHumidity = 60,
+            MinLightLevel = 0, MaxLightLevel = 200
+        };
+        var exhibit = await CreateExhibitAsync(request);
+        await using var dbContext = CreateDbContext();
+        var controller = new ExhibitsController(dbContext);
+        var fetched = GetOk(await controller.GetById(exhibit.Id, CancellationToken.None));
+        Assert.Equal(18, fetched.MinTemperature);
+        Assert.Equal(22, fetched.MaxTemperature);
+        Assert.Equal(40, fetched.MinHumidity);
+        Assert.Equal(60, fetched.MaxHumidity);
+        Assert.Equal(0, fetched.MinLightLevel);
+        Assert.Equal(200, fetched.MaxLightLevel);
+
+        var updated = GetOk(await controller.Update(exhibit.Id, request with { MinTemperature = null, MaxLightLevel = 180 }, CancellationToken.None));
+        Assert.Null(updated.MinTemperature);
+        Assert.Equal(180, GetOk(await controller.GetById(exhibit.Id, CancellationToken.None)).MaxLightLevel);
+    }
+
+    [Theory]
+    [InlineData(23, 22, 40, 60, 0, 200, nameof(ExhibitRequest.MinTemperature))]
+    [InlineData(-41, 22, 40, 60, 0, 200, nameof(ExhibitRequest.MinTemperature))]
+    [InlineData(18, 22, 60, 40, 0, 200, nameof(ExhibitRequest.MinHumidity))]
+    [InlineData(18, 22, 40, 101, 0, 200, nameof(ExhibitRequest.MaxHumidity))]
+    [InlineData(18, 22, 40, 60, 300, 200, nameof(ExhibitRequest.MinLightLevel))]
+    [InlineData(18, 22, 40, 60, -1, 200, nameof(ExhibitRequest.MinLightLevel))]
+    public async Task ExhibitRejectsInvalidRanges(double minTemp, double maxTemp, double minHumidity, double maxHumidity,
+        double minLight, double maxLight, string field)
+    {
+        await using var dbContext = CreateDbContext();
+        var result = await new ExhibitsController(dbContext).Create(SampleExhibit with
+        {
+            MinTemperature = minTemp, MaxTemperature = maxTemp, MinHumidity = minHumidity,
+            MaxHumidity = maxHumidity, MinLightLevel = minLight, MaxLightLevel = maxLight
+        }, CancellationToken.None);
+        AssertValidationError(result, field);
+    }
+
+    [Theory]
+    [InlineData(18, 60, 200, 40.0, "Suitable", "WithinRange", "WithinRange", "WithinRange")]
+    [InlineData(24, 55, 200, 40.0, "Unsuitable", "AboveMaximum", "WithinRange", "WithinRange")]
+    [InlineData(17, 55, 200, 40.0, "Unsuitable", "BelowMinimum", "WithinRange", "WithinRange")]
+    [InlineData(20, 30, 300, 40.0, "Unsuitable", "WithinRange", "BelowMinimum", "AboveMaximum")]
+    [InlineData(20, 99, 100, null, "Suitable", "WithinRange", "NotConfigured", "WithinRange")]
+    public async Task SuitabilityUsesOnlyTheLatestReadingFromTheExhibitsZone(
+        double temperature, double humidity, double lux, double? minHumidity,
+        string status, string tempStatus, string humidityStatus, string lightStatus)
+    {
+        var shelf = await CreateLocationAsync(ShelfA);
+        var exhibit = await CreateExhibitAsync(SampleExhibit with
+        {
+            Status = "Stored", StorageLocationId = shelf.Id, MinTemperature = 18, MaxTemperature = 22,
+            MinHumidity = minHumidity, MaxHumidity = minHumidity is null ? null : 60, MaxLightLevel = 200
+        });
+        await using var dbContext = CreateDbContext();
+        var zone = await dbContext.StorageZones.SingleAsync();
+        zone.DeviceId = "museum-storage-01";
+        var latest = new DateTime(2026, 1, 2, 0, 0, 0, DateTimeKind.Utc);
+        dbContext.SensorReadings.AddRange(
+            new SensorReading { DeviceId = zone.DeviceId, Temperature = 45, CreatedAt = latest.AddDays(-1) },
+            new SensorReading { DeviceId = zone.DeviceId, Temperature = temperature, Humidity = humidity, LightLevel = lux, CreatedAt = latest },
+            new SensorReading { DeviceId = "other-device", Temperature = 60, CreatedAt = latest.AddDays(1) });
+        await dbContext.SaveChangesAsync();
+
+        var suitability = GetOk(await new ExhibitsController(dbContext).GetStorageSuitability(exhibit.Id, CancellationToken.None));
+        Assert.Equal(status, suitability.Status);
+        Assert.Equal(latest, suitability.ReadingAt);
+        Assert.Equal(new StorageCondition(temperature, 18, 22, tempStatus), suitability.Temperature);
+        Assert.Equal(new StorageCondition(humidity, minHumidity, minHumidity is null ? null : 60, humidityStatus), suitability.Humidity);
+        Assert.Equal(new StorageCondition(lux, null, 200, lightStatus), suitability.LightLevel);
+    }
+
+    [Fact]
+    public async Task SuitabilityDistinguishesMissingDeviceMissingReadingsAndCheckedOut()
+    {
+        var shelf = await CreateLocationAsync(ShelfA);
+        var exhibit = await CreateExhibitAsync(SampleExhibit with
+        {
+            Status = "Stored", StorageLocationId = shelf.Id, MinTemperature = 18
+        });
+        await using var dbContext = CreateDbContext();
+        var controller = new ExhibitsController(dbContext);
+        var noDevice = GetOk(await controller.GetStorageSuitability(exhibit.Id, CancellationToken.None));
+        Assert.Equal("NoDevice", noDevice.Status);
+        Assert.Equal(new StorageCondition(null, 18, null, "Unknown"), noDevice.Temperature);
+
+        var zone = await dbContext.StorageZones.SingleAsync();
+        zone.DeviceId = "museum-storage-01";
+        dbContext.SensorReadings.Add(new SensorReading { DeviceId = "other-device" });
+        await dbContext.SaveChangesAsync();
+        Assert.Equal("NoReading", GetOk(await controller.GetStorageSuitability(exhibit.Id, CancellationToken.None)).Status);
+
+        GetOk(await controller.CheckOut(exhibit.Id, CancellationToken.None));
+        Assert.Equal("NotApplicable", GetOk(await controller.GetStorageSuitability(exhibit.Id, CancellationToken.None)).Status);
+        Assert.IsType<NotFoundResult>((await controller.GetStorageSuitability(long.MaxValue, CancellationToken.None)).Result);
+    }
+
     private MuseumStorageDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<MuseumStorageDbContext>().UseSqlite(_connection).Options);
 

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ApiError, apiFetch, errorMessage, jsonRequest } from "./api";
 import { ErrorNotice, formatTimestamp, LoadNotice, useApiData } from "./shared";
 import { locationsPath, StorageSection, ZoneOptions, zonesPath } from "./storage";
-import type { Exhibit, ExhibitInput, ExhibitStatus, StorageLocation, StorageOperation, StorageZone } from "./types";
+import type { Exhibit, ExhibitInput, ExhibitStatus, StorageCondition, StorageLocation, StorageOperation, StorageSuitability, StorageZone } from "./types";
 
 const exhibitsPath = "/exhibits";
 const storageLocationsLink = "/exhibits#storage-locations";
@@ -144,6 +144,16 @@ function ExhibitResults({ query }: { query: string }) {
   );
 }
 
+const conditionFields = [
+  { key: "temperature", name: "Temperatūra", min: "minTemperature", max: "maxTemperature", unit: "°C", low: "Per žema", high: "Per aukšta" },
+  { key: "humidity", name: "Drėgmė", min: "minHumidity", max: "maxHumidity", unit: "%", low: "Per maža", high: "Per didelė" },
+  { key: "lightLevel", name: "Apšvietimas", min: "minLightLevel", max: "maxLightLevel", unit: "lx", low: "Per mažas", high: "Per didelis" },
+] as const;
+
+function optionalNumber(value: FormDataEntryValue | null) {
+  return value === null || value === "" ? null : Number(value);
+}
+
 function ExhibitForm({ locations, exhibit, onSaved, onCancel }: {
   locations: StorageLocation[];
   exhibit?: Exhibit;
@@ -168,6 +178,12 @@ function ExhibitForm({ locations, exhibit, onSaved, onCancel }: {
       description: String(fields.get("description") ?? "").trim() || null,
       status,
       storageLocationId: status === "Stored" ? Number(location) : null,
+      minTemperature: optionalNumber(fields.get("minTemperature")),
+      maxTemperature: optionalNumber(fields.get("maxTemperature")),
+      minHumidity: optionalNumber(fields.get("minHumidity")),
+      maxHumidity: optionalNumber(fields.get("maxHumidity")),
+      minLightLevel: optionalNumber(fields.get("minLightLevel")),
+      maxLightLevel: optionalNumber(fields.get("maxLightLevel")),
     };
     setSaving(true);
     setError("");
@@ -208,6 +224,17 @@ function ExhibitForm({ locations, exhibit, onSaved, onCancel }: {
             <label className="full-width">Aprašymas<textarea name="description" rows={3} defaultValue={exhibit?.description ?? ""} /></label>
           </div>
           {needsLocation && <p className="state-text"><Link to={storageLocationsLink}>Sukurkite saugojimo vietą</Link>, kad galėtumėte užregistruoti eksponatą kaip esantį saugykloje.</p>}
+          <fieldset className="condition-fields">
+            <legend>Tinkamos laikymo sąlygos</legend>
+            <div className="field-grid">
+              {conditionFields.map(({ name, min, max, unit }) => (
+                <Fragment key={min}>
+                  <label>{name} – nuo ({unit})<input name={min} type="number" step="any" defaultValue={exhibit?.[min] ?? ""} /></label>
+                  <label>{name} – iki ({unit})<input name={max} type="number" step="any" defaultValue={exhibit?.[max] ?? ""} /></label>
+                </Fragment>
+              ))}
+            </div>
+          </fieldset>
           <div className="form-actions">
             <button className="button primary" disabled={needsLocation} type="submit">{saving ? "Išsaugoma…" : exhibit ? "Išsaugoti" : "Sukurti"}</button>
             <button className="button" type="button" onClick={onCancel}>Atšaukti</button>
@@ -270,6 +297,7 @@ export function ExhibitDetail({ id }: { id: string }) {
     apiFetch<Exhibit>(path, { signal }),
     apiFetch<StorageOperation[]>(`${path}/operations`, { signal }),
     apiFetch<StorageLocation[]>(locationsPath, { signal }),
+    apiFetch<StorageSuitability>(`${path}/storage-suitability`, { signal }),
   ]), [path]);
   const { data, error, loading, refresh } = useApiData(load);
   const [location, setLocation] = useState("");
@@ -367,6 +395,7 @@ export function ExhibitDetail({ id }: { id: string }) {
               <div className="full-width"><dt>Aprašymas</dt><dd className="description">{exhibit.description || "—"}</dd></div>
             </dl>
           </section>
+          <SuitabilityPanel suitability={data[3]} />
           <section className="panel" aria-labelledby="actions-heading">
             <div className="panel-heading"><h2 id="actions-heading">Saugojimo operacijos</h2></div>
             <form className="form-body" onSubmit={(event) => { event.preventDefault(); void apply(assignmentAction); }}>
@@ -412,6 +441,57 @@ export function ExhibitDetail({ id }: { id: string }) {
         </>
       )}
     </>
+  );
+}
+
+const suitabilityLabels = {
+  Suitable: "Laikymo sąlygos tinkamos",
+  Unsuitable: "Laikymo sąlygos netinkamos",
+  NoDevice: "Zonai nepriskirtas įrenginys",
+  NoReading: "Nėra matavimo duomenų",
+  NotApplicable: "Eksponatas šiuo metu nėra saugykloje",
+};
+
+const conditionNumber = new Intl.NumberFormat("lt-LT", { maximumFractionDigits: 2 });
+
+function formatRange({ min, max }: StorageCondition, unit: string) {
+  if (min === null && max === null) return "Nenurodyta";
+  if (min === null) return `Iki ${conditionNumber.format(max!)} ${unit}`;
+  if (max === null) return `Nuo ${conditionNumber.format(min)} ${unit}`;
+  return `${conditionNumber.format(min)}–${conditionNumber.format(max)} ${unit}`;
+}
+
+function SuitabilityPanel({ suitability }: { suitability: StorageSuitability }) {
+  const badge = suitability.status === "Suitable" ? "badge-good"
+    : suitability.status === "Unsuitable" ? "badge-alarm" : "badge-neutral";
+  return (
+    <section className="panel" aria-labelledby="suitability-heading">
+      <div className="panel-heading">
+        <h2 id="suitability-heading">Laikymo sąlygų būklė</h2>
+        <span className={`badge ${badge}`}>{suitabilityLabels[suitability.status]}</span>
+      </div>
+      <div className="table-wrap">
+        <table className="suitability-table">
+          <thead><tr><th scope="col">Rodiklis</th><th scope="col">Rodmuo</th><th scope="col">Reikalavimas</th><th scope="col">Įvertinimas</th></tr></thead>
+          <tbody>
+            {conditionFields.map(({ key, name, unit, low, high }) => {
+              const condition = suitability[key];
+              const assessment = { WithinRange: "Tinkama", BelowMinimum: low, AboveMaximum: high, NotConfigured: "—", Unknown: "—" }[condition.status];
+              const outOfRange = condition.status === "BelowMinimum" || condition.status === "AboveMaximum";
+              return (
+                <tr key={key}>
+                  <th scope="row">{name}</th>
+                  <td>{condition.value === null ? "—" : `${conditionNumber.format(condition.value)} ${unit}`}</td>
+                  <td>{formatRange(condition, unit)}</td>
+                  <td>{outOfRange ? <span className="badge badge-alarm">{assessment}</span> : assessment}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {suitability.readingAt && <p className="form-body report-time">Paskutinis matavimas <time dateTime={suitability.readingAt}>{formatTimestamp(suitability.readingAt)}</time></p>}
+    </section>
   );
 }
 

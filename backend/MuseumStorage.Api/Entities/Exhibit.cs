@@ -10,4 +10,10 @@ public class Exhibit
     public ExhibitStatus Status { get; set; }
     public long? StorageLocationId { get; set; }
     public StorageLocation? StorageLocation { get; set; }
+    public double? MinTemperature { get; set; }
+    public double? MaxTemperature { get; set; }
+    public double? MinHumidity { get; set; }
+    public double? MaxHumidity { get; set; }
+    public double? MinLightLevel { get; set; }
+    public double? MaxLightLevel { get; set; }
 }

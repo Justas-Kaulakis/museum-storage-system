@@ -76,6 +76,41 @@ public class ExhibitsController : ControllerBase
         return exhibit is null ? NotFound() : Ok(ToResponse(exhibit));
     }
 
+    [HttpGet("{id:long}/storage-suitability")]
+    public async Task<ActionResult<StorageSuitabilityResponse>> GetStorageSuitability(long id, CancellationToken cancellationToken)
+    {
+        var exhibit = await ExhibitsWithLocation.SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        if (exhibit is null)
+            return NotFound();
+
+        var deviceId = exhibit.StorageLocation?.StorageZone?.DeviceId;
+        var reading = exhibit.Status == ExhibitStatus.Stored && deviceId is not null
+            ? await _dbContext.SensorReadings.AsNoTracking().Where(x => x.DeviceId == deviceId)
+                .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken)
+            : null;
+
+        var temperature = EvaluateCondition(reading?.Temperature, exhibit.MinTemperature, exhibit.MaxTemperature);
+        var humidity = EvaluateCondition(reading?.Humidity, exhibit.MinHumidity, exhibit.MaxHumidity);
+        var light = EvaluateCondition(reading?.LightLevel, exhibit.MinLightLevel, exhibit.MaxLightLevel);
+        var status = exhibit.Status == ExhibitStatus.CheckedOut ? "NotApplicable"
+            : deviceId is null ? "NoDevice"
+            : reading is null ? "NoReading"
+            : new[] { temperature, humidity, light }.Any(x => x.Status is "BelowMinimum" or "AboveMaximum") ? "Unsuitable"
+            : "Suitable";
+
+        return Ok(new StorageSuitabilityResponse(status, reading?.CreatedAt, temperature, humidity, light));
+    }
+
+    private static StorageCondition EvaluateCondition(double? value, double? min, double? max)
+    {
+        var status = min is null && max is null ? "NotConfigured"
+            : value is null ? "Unknown"
+            : value < min ? "BelowMinimum"
+            : value > max ? "AboveMaximum"
+            : "WithinRange";
+        return new StorageCondition(value, min, max, status);
+    }
+
     [HttpGet("by-code/{**code}")]
     public async Task<ActionResult<ExhibitResponse>> GetByCode(string code, CancellationToken cancellationToken)
     {
@@ -268,6 +303,10 @@ public class ExhibitsController : ControllerBase
         else if (status == ExhibitStatus.CheckedOut && request.StorageLocationId is not null)
             ModelState.AddModelError(nameof(request.StorageLocationId), "A checked-out exhibit cannot have a storage location.");
 
+        ValidateRange(request.MinTemperature, request.MaxTemperature, -40, 80, nameof(request.MinTemperature), nameof(request.MaxTemperature), "Temperatūra turi būti nuo −40 iki 80 °C.");
+        ValidateRange(request.MinHumidity, request.MaxHumidity, 0, 100, nameof(request.MinHumidity), nameof(request.MaxHumidity), "Drėgmė turi būti nuo 0 iki 100 %.");
+        ValidateRange(request.MinLightLevel, request.MaxLightLevel, 0, double.MaxValue, nameof(request.MinLightLevel), nameof(request.MaxLightLevel), "Apšvietimas turi būti neneigiamas skaičius.");
+
         if (status is null || !ModelState.IsValid)
             return ValidationProblem(statusCode: StatusCodes.Status400BadRequest, modelStateDictionary: ModelState);
 
@@ -283,6 +322,12 @@ public class ExhibitsController : ControllerBase
         exhibit.Name = request.Name.Trim();
         exhibit.Description = request.Description;
         exhibit.Category = request.Category;
+        exhibit.MinTemperature = request.MinTemperature;
+        exhibit.MaxTemperature = request.MaxTemperature;
+        exhibit.MinHumidity = request.MinHumidity;
+        exhibit.MaxHumidity = request.MaxHumidity;
+        exhibit.MinLightLevel = request.MinLightLevel;
+        exhibit.MaxLightLevel = request.MaxLightLevel;
         ApplyStorageState(exhibit, status.Value, location);
 
         if (exhibit.Id == 0)
@@ -291,6 +336,18 @@ public class ExhibitsController : ControllerBase
             _dbContext.Entry(exhibit).State = EntityState.Modified;
 
         return await PersistAsync(exhibit, cancellationToken);
+    }
+
+    private void ValidateRange(double? min, double? max, double lowerBound, double upperBound, string minKey, string maxKey, string rangeError)
+    {
+        if (min is double minimum && (!double.IsFinite(minimum) || minimum < lowerBound || minimum > upperBound))
+            ModelState.AddModelError(minKey, rangeError);
+
+        if (max is double maximum && (!double.IsFinite(maximum) || maximum < lowerBound || maximum > upperBound))
+            ModelState.AddModelError(maxKey, rangeError);
+
+        if (min > max)
+            ModelState.AddModelError(minKey, "Mažiausia reikšmė negali viršyti didžiausios.");
     }
 
     private void ApplyStorageState(Exhibit exhibit, ExhibitStatus status, StorageLocation? location)
@@ -362,5 +419,6 @@ public class ExhibitsController : ControllerBase
 
     private static ExhibitResponse ToResponse(Exhibit exhibit) =>
         new(exhibit.Id, exhibit.Code, exhibit.Name, exhibit.Description, exhibit.Category,
-            exhibit.Status.ToString(), exhibit.StorageLocationId, StorageLocationResponse.From(exhibit.StorageLocation));
+            exhibit.Status.ToString(), exhibit.StorageLocationId, StorageLocationResponse.From(exhibit.StorageLocation),
+            exhibit.MinTemperature, exhibit.MaxTemperature, exhibit.MinHumidity, exhibit.MaxHumidity, exhibit.MinLightLevel, exhibit.MaxLightLevel);
 }

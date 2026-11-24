@@ -41,7 +41,11 @@ public class SensorReadingsController : ControllerBase
             Temperature = request.Temperature,
             Humidity = request.Humidity,
             LightLevel = request.LightLevel,
-            FanEnabled = request.FanEnabled,
+            CoolingEnabled = request.CoolingEnabled ?? request.FanEnabled,
+            HeatingEnabled = request.HeatingEnabled,
+            HumidifierEnabled = request.HumidifierEnabled,
+            DehumidifierEnabled = request.DehumidifierEnabled,
+            LightIntensity = request.LightIntensity,
             AlarmEnabled = request.AlarmEnabled
         };
 

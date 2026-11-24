@@ -5,21 +5,28 @@ import { ErrorNotice, formatTimestamp, LoadNotice, useApiData } from "./shared";
 import { ZoneOptions, zonesPath } from "./storage";
 import type { EnvironmentSettings, SensorReading, StorageZone } from "./types";
 
-const measurementFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
+const measurementFormat = new Intl.NumberFormat("lt-LT", { maximumFractionDigits: 1 });
 type ThresholdField = keyof EnvironmentSettings;
-const thresholdRows: { label: string; temperature: ThresholdField; humidity: ThresholdField }[] = [
-  { label: "Ventiliatoriaus įjungimas", temperature: "fanOnTemperature", humidity: "fanOnHumidity" },
-  { label: "Ventiliatoriaus išjungimas", temperature: "fanOffTemperature", humidity: "fanOffHumidity" },
-  { label: "Aliarmas", temperature: "temperatureAlarm", humidity: "humidityAlarm" },
+const thresholdGroups: { label: string; unit: string; fields: [ThresholdField, string][] }[] = [
+  { label: "Temperatūra", unit: "°C", fields: [
+    ["heatingOnTemperature", "Šildymas įjungiamas"],
+    ["heatingOffTemperature", "Šildymas išjungiamas"],
+    ["coolingOnTemperature", "Vėsinimas įjungiamas"],
+    ["coolingOffTemperature", "Vėsinimas išjungiamas"],
+    ["temperatureAlarm", "Temperatūros aliarmo riba"],
+  ] },
+  { label: "Drėgmė", unit: "%", fields: [
+    ["humidifierOnHumidity", "Drėkintuvas įjungiamas"],
+    ["humidifierOffHumidity", "Drėkintuvas išjungiamas"],
+    ["dehumidifierOnHumidity", "Sausintuvas įjungiamas"],
+    ["dehumidifierOffHumidity", "Sausintuvas išjungiamas"],
+    ["humidityAlarm", "Drėgmės aliarmo riba"],
+  ] },
+  { label: "Apšvietimas", unit: "lx", fields: [
+    ["minLightLevel", "Minimalus apšvietimas"],
+    ["maxLightLevel", "Maksimalus apšvietimas"],
+  ] },
 ];
-const thresholdLabels: Record<ThresholdField, string> = {
-  fanOnTemperature: "Ventiliatoriaus įjungimo temperatūra",
-  fanOffTemperature: "Ventiliatoriaus išjungimo temperatūra",
-  fanOnHumidity: "Ventiliatoriaus įjungimo drėgmė",
-  fanOffHumidity: "Ventiliatoriaus išjungimo drėgmė",
-  temperatureAlarm: "Temperatūros aliarmo riba",
-  humidityAlarm: "Drėgmės aliarmo riba",
-};
 
 function loadZones(signal: AbortSignal) {
   return apiFetch<StorageZone[]>(zonesPath, { signal });
@@ -73,6 +80,12 @@ function ZoneEnvironment({ zone, zones, selectZone, refreshZones, loadingZones }
     { label: "Drėgmė", value: reading?.humidity, unit: "%" },
     { label: "Apšvietimas", value: reading?.lightLevel, unit: "lx" },
   ];
+  const actuators = [
+    { label: "Vėsinimas", enabled: reading?.coolingEnabled },
+    { label: "Šildymas", enabled: reading?.heatingEnabled },
+    { label: "Drėkintuvas", enabled: reading?.humidifierEnabled },
+    { label: "Sausintuvas", enabled: reading?.dehumidifierEnabled },
+  ];
 
   function updateField(field: ThresholdField, value: string) {
     setEdits((previous) => ({ ...previous, [field]: value }));
@@ -86,10 +99,16 @@ function ZoneEnvironment({ zone, zones, selectZone, refreshZones, loadingZones }
 
     const form = new FormData(event.currentTarget);
     const thresholds: EnvironmentSettings = {
-      fanOnTemperature: Number(form.get("fanOnTemperature")),
-      fanOffTemperature: Number(form.get("fanOffTemperature")),
-      fanOnHumidity: Number(form.get("fanOnHumidity")),
-      fanOffHumidity: Number(form.get("fanOffHumidity")),
+      coolingOnTemperature: Number(form.get("coolingOnTemperature")),
+      coolingOffTemperature: Number(form.get("coolingOffTemperature")),
+      heatingOnTemperature: Number(form.get("heatingOnTemperature")),
+      heatingOffTemperature: Number(form.get("heatingOffTemperature")),
+      humidifierOnHumidity: Number(form.get("humidifierOnHumidity")),
+      humidifierOffHumidity: Number(form.get("humidifierOffHumidity")),
+      dehumidifierOnHumidity: Number(form.get("dehumidifierOnHumidity")),
+      dehumidifierOffHumidity: Number(form.get("dehumidifierOffHumidity")),
+      minLightLevel: Number(form.get("minLightLevel")),
+      maxLightLevel: Number(form.get("maxLightLevel")),
       temperatureAlarm: Number(form.get("temperatureAlarm")),
       humidityAlarm: Number(form.get("humidityAlarm")),
     };
@@ -137,12 +156,15 @@ function ZoneEnvironment({ zone, zones, selectZone, refreshZones, loadingZones }
           ))}
         </dl>
         <dl className="device-states">
-          <div>
-            <dt>Ventiliatorius</dt>
-            <dd>
-              {reading ? <span className={reading.fanEnabled ? "badge badge-active" : "badge badge-neutral"}>{reading.fanEnabled ? "Įjungtas" : "Išjungtas"}</span> : "—"}
-            </dd>
-          </div>
+          {actuators.map(({ label, enabled }) => (
+            <div key={label}>
+              <dt>{label}</dt>
+              <dd>{enabled === undefined ? "—" : (
+                <span className={enabled ? "badge badge-active" : "badge badge-neutral"}>{enabled ? "Įjungtas" : "Išjungtas"}</span>
+              )}</dd>
+            </div>
+          ))}
+          <div><dt>Apšvietimo galia</dt><dd>{reading ? `${reading.lightIntensity} %` : "—"}</dd></div>
           <div>
             <dt>Aliarmas</dt>
             <dd>
@@ -153,42 +175,23 @@ function ZoneEnvironment({ zone, zones, selectZone, refreshZones, loadingZones }
         </dl>
       </section>
 
-      <section className="panel" aria-labelledby="thresholds-heading">
-        <div className="panel-heading">
-          <h2 id="thresholds-heading">Ribinės reikšmės</h2>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th scope="col">Ribinė reikšmė</th><th scope="col">Temperatūra (°C)</th><th scope="col">Drėgmė (%)</th></tr></thead>
-            <tbody>
-              {thresholdRows.map(({ label, temperature, humidity }) => (
-                <tr key={label}>
-                  <th scope="row">{label}</th>
-                  <td className="numeric">{settings?.[temperature] ?? "—"}</td>
-                  <td className="numeric">{settings?.[humidity] ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
       {settings && (
         <section className="panel" aria-labelledby="threshold-form-heading">
           <div className="panel-heading"><h2 id="threshold-form-heading">Aplinkos nustatymai</h2></div>
           <form className="form-body" onSubmit={save}>
             {saveError && <ErrorNotice message={saveError} />}
             <fieldset disabled={saving || loading || loadingZones || Boolean(error)}>
-              {thresholdRows.map(({ label, temperature, humidity }) => (
-                <div key={label} className="threshold-row">
+              {thresholdGroups.map(({ label, unit, fields }) => (
+                <div key={label} className="setting-group">
                   <h3>{label}</h3>
-                  <label>
-                    {thresholdLabels[temperature]} (°C)
-                    <input name={temperature} aria-label={`${thresholdLabels[temperature]} (°C)`} type="number" step="any" required value={edits[temperature] ?? settings[temperature]} onChange={(event) => updateField(temperature, event.target.value)} />
-                  </label>
-                  <label>
-                    {thresholdLabels[humidity]} (%)
-                    <input name={humidity} aria-label={`${thresholdLabels[humidity]} (%)`} type="number" step="any" required value={edits[humidity] ?? settings[humidity]} onChange={(event) => updateField(humidity, event.target.value)} />
-                  </label>
+                  <div className="field-grid">
+                    {fields.map(([field, name]) => (
+                      <label key={field}>
+                        {name} ({unit})
+                        <input name={field} type="number" step="any" required value={edits[field] ?? settings[field]} onChange={(event) => updateField(field, event.target.value)} />
+                      </label>
+                    ))}
+                  </div>
                 </div>
               ))}
               <div className="form-actions">

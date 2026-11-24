@@ -56,7 +56,15 @@
       "left": -137.1,
       "rotate": 270,
       "attrs": { "volume": "0.3", "mode": "smooth" }
-    }
+    },
+    { "type": "wokwi-led", "id": "heater", "top": 162, "left": 424, "attrs": { "color": "red", "label": "Heater" } },
+    { "type": "wokwi-resistor", "id": "heaterResistor", "top": 177, "left": 347, "attrs": { "value": "220" } },
+    { "type": "wokwi-led", "id": "humidifier", "top": 218, "left": 424, "attrs": { "color": "cyan", "label": "Humidifier" } },
+    { "type": "wokwi-resistor", "id": "humidifierResistor", "top": 233, "left": 347, "attrs": { "value": "220" } },
+    { "type": "wokwi-led", "id": "dehumidifier", "top": 274, "left": 424, "attrs": { "color": "yellow", "label": "Dehumidifier" } },
+    { "type": "wokwi-resistor", "id": "dehumidifierResistor", "top": 289, "left": 347, "attrs": { "value": "220" } },
+    { "type": "wokwi-led", "id": "lighting", "top": 330, "left": 424, "attrs": { "color": "white", "label": "Lighting" } },
+    { "type": "wokwi-resistor", "id": "lightingResistor", "top": 345, "left": 347, "attrs": { "value": "220" } }
   ],
   "connections": [
     [ "esp:TX0", "$serialMonitor:RX", "", [] ],
@@ -79,7 +87,19 @@
     [ "fanResistor:2", "fan:A", "orange", [] ],
     [ "fan:C", "esp:GND.1", "black", [] ],
     [ "buzzer:2", "esp:D27", "purple", [ "v-9.2", "h82.6" ] ],
-    [ "buzzer:1", "esp:GND.2", "green", [ "v19.2", "h82.6" ] ]
+    [ "buzzer:1", "esp:GND.2", "green", [ "v19.2", "h82.6" ] ],
+    [ "esp:D32", "heaterResistor:1", "red", [] ],
+    [ "heaterResistor:2", "heater:A", "red", [] ],
+    [ "heater:C", "esp:GND.1", "black", [] ],
+    [ "esp:D33", "humidifierResistor:1", "cyan", [] ],
+    [ "humidifierResistor:2", "humidifier:A", "cyan", [] ],
+    [ "humidifier:C", "esp:GND.1", "black", [] ],
+    [ "esp:D25", "dehumidifierResistor:1", "yellow", [] ],
+    [ "dehumidifierResistor:2", "dehumidifier:A", "yellow", [] ],
+    [ "dehumidifier:C", "esp:GND.1", "black", [] ],
+    [ "esp:D23", "lightingResistor:1", "gray", [] ],
+    [ "lightingResistor:2", "lighting:A", "gray", [] ],
+    [ "lighting:C", "esp:GND.1", "black", [] ]
   ],
   "dependencies": {}
 }
