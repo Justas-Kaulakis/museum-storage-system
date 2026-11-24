@@ -95,8 +95,10 @@ void updateActuators(float temperature, float humidity)
     heatingEnabled = nextHeatingState(environmentSettings, heatingEnabled, temperature);
     humidifierEnabled = nextHumidifierState(environmentSettings, humidifierEnabled, humidity);
     dehumidifierEnabled = nextDehumidifierState(environmentSettings, dehumidifierEnabled, humidity);
+    // pries ijungdami viena isjungiam kita, kad abu trumpam neisijungtu
     if (coolingEnabled)
         digitalWrite(HEATER_PIN, LOW);
+    // vesinimo rele ijungia zemas signalas
     digitalWrite(RELAY_PIN, coolingEnabled ? LOW : HIGH);
     digitalWrite(HEATER_PIN, heatingEnabled ? HIGH : LOW);
     if (dehumidifierEnabled)
@@ -109,6 +111,7 @@ void updateActuators(float temperature, float humidity)
 float readLux()
 {
     int rawValue = analogRead(LDR_PIN);
+    // ties adc ribomis grazinam krastines reiksmes, kad nedalytume is nulio
     if (rawValue <= 0)
         return 100000.0;
     if (rawValue >= 4095)
@@ -173,6 +176,7 @@ void updateEnvironment()
 
     TempAndHumidity data = dht.getTempAndHumidity();
     bool valid = isfinite(data.temperature) && isfinite(data.humidity);
+    // jei dht neperskaitom, paliekam ankstesnes busenas, bet sviesa vis tiek reguliuojam
     if (valid)
         updateActuators(data.temperature, data.humidity);
     else
@@ -180,6 +184,7 @@ void updateEnvironment()
 
     float lux = readLux();
     lightIntensity = nextLightIntensity(environmentSettings, lightIntensity, lux);
+    // wokwi lempute rodo parinkta ryskuma, o ldr rodmens ji nekeicia
     analogWrite(LIGHTING_PIN, (lightIntensity * 255 + 50) / 100);
     SensorReading reading{data.temperature, data.humidity, lux, coolingEnabled, heatingEnabled, humidifierEnabled, dehumidifierEnabled, lightIntensity, alarmEnabled, valid};
     if (displayReady)
@@ -199,6 +204,7 @@ bool beginRequest(HTTPClient& http, WiFiClient& client, const char* path)
 void sendSensorReading(const SensorReading& reading)
 {
     JsonDocument json;
+    // pagal irenginio id serveris susieja rodmenis su zona
     json["deviceId"] = DEVICE_ID;
     json["temperature"] = reading.temperature;
     json["humidity"] = reading.humidity;
@@ -229,11 +235,13 @@ void sendSensorReading(const SensorReading& reading)
 
 double readThreshold(JsonVariantConst value)
 {
+    // trukstama ar netinkama reiksme veliau neleis priimti nustatymu
     return value.is<double>() ? value.as<double>() : NAN;
 }
 
 void fetchEnvironmentSettings()
 {
+    // jei serveris neatsako ar ribos netinka, liekam prie paskutiniu tinkamu nustatymu
     WiFiClient client;
     HTTPClient http;
     const String path = String("/api/environment-settings?deviceId=") + DEVICE_ID;
@@ -286,6 +294,7 @@ void runNetwork(void*)
 {
     WiFi.mode(WIFI_STA);
     WiFi.setAutoReconnect(false);
+    // laikmacius pastumiam atgal, kad pirmi bandymai prasidetu is karto
     uint32_t lastWiFiAttempt = millis() - WIFI_RECONNECT_INTERVAL_MS;
     uint32_t lastTelemetry = millis() - TELEMETRY_INTERVAL_MS;
     uint32_t lastSettingsFetch = millis() - SETTINGS_INTERVAL_MS;
@@ -321,7 +330,7 @@ void runNetwork(void*)
 
 void startNetwork()
 {
-    // Keep only the latest settings and sensor sample across the two tasks.
+    // tinklas veikia atskirai, eilese laikom tik naujausius duomenis
     settingsQueue = xQueueCreate(1, sizeof(EnvironmentSettings));
     readingsQueue = xQueueCreate(1, sizeof(SensorReading));
     if (settingsQueue && readingsQueue && xTaskCreate(runNetwork, "network", 8192, nullptr, 1, nullptr) == pdPASS)

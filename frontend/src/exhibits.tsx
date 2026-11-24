@@ -349,6 +349,7 @@ export function ExhibitDetail({ id }: { id: string }) {
       await apiFetch<Exhibit>(`${path}/${action}`, options);
       setLocation("");
       setNotice(actions[action].success);
+      // po operacijos užkraunam ir istoriją, ir sąlygų įvertinimą
       refresh();
     } catch (failure) {
       setActionError(errorMessage(failure, "Nepavyko atlikti saugojimo operacijos."));

@@ -28,6 +28,7 @@ public class EnvironmentSettingsController : ControllerBase
             return NotFound();
 
         var id = deviceId.Trim();
+        // valdikliui nereikia žinoti zonos numerio, užtenka savo įrenginio id
         return await ReadAsync(_dbContext.EnvironmentSettings.Where(x => x.StorageZone.DeviceId == id), cancellationToken);
     }
 

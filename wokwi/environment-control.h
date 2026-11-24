@@ -54,6 +54,7 @@ inline bool validateEnvironmentSettings(const EnvironmentSettings& settings)
            settings.minLightLevel >= 0.0 && settings.minLightLevel < settings.maxLightLevel;
 }
 
+// skirtingos įjungimo ir išjungimo ribos, kad relė nesijunginėtų ties viena riba
 inline bool nextCoolingState(const EnvironmentSettings& settings, bool enabled, float temperature)
 {
     return enabled ? temperature > settings.coolingOffTemperature : temperature >= settings.coolingOnTemperature;

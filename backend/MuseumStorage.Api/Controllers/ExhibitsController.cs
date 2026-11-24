@@ -54,7 +54,7 @@ public class ExhibitsController : ControllerBase
             query = query.Where(x => x.StorageLocationId == storageLocationId.Value);
 
         IEnumerable<Exhibit> exhibits = await query.OrderBy(x => x.Code).ToListAsync(cancellationToken);
-        // SQLite case folding only covers ASCII. Match Lithuanian text in the small registry in memory.
+        // filtruojam atmintyje, kad ž ir Ž paieškoje sutaptų
         if (!string.IsNullOrWhiteSpace(search))
         {
             var term = search.Trim();
@@ -107,7 +107,7 @@ public class ExhibitsController : ControllerBase
 
     private static string GetQrDownloadName(string code)
     {
-        // Keep the download name within common filesystem limits, even for four-byte Unicode characters.
+        // trumpinam tik failo vardą, o qr kode paliekam visą eksponato kodą
         var name = string.Concat(code.EnumerateRunes().Take(60).Select(character =>
             Rune.IsControl(character) || (character.IsAscii && "<>:\"/\\|?*".Contains((char)character.Value))
                 ? "_" : character.ToString()));
@@ -121,6 +121,7 @@ public class ExhibitsController : ControllerBase
         if (exhibit is null)
             return NotFound();
 
+        // perkėlus eksponatą, tinkamumą tikrinam pagal naujos zonos rodmenis
         var deviceId = exhibit.StorageLocation?.StorageZone?.DeviceId;
         var reading = exhibit.Status == ExhibitStatus.Stored && deviceId is not null
             ? await _dbContext.SensorReadings.AsNoTracking().Where(x => x.DeviceId == deviceId)
@@ -400,6 +401,7 @@ public class ExhibitsController : ControllerBase
                 (ExhibitStatus.Stored, ExhibitStatus.CheckedOut) => StorageOperationType.CheckOut,
                 _ => StorageOperationType.Move
             };
+            // operaciją pridedam čia, kad ją išsaugotume kartu su nauja būsena
             _dbContext.StorageOperations.Add(new StorageOperation
             {
                 ExhibitId = exhibit.Id,

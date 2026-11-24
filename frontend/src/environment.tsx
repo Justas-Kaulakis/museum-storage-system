@@ -43,6 +43,7 @@ export function EnvironmentPage() {
       <LoadNotice error={error} loading={loading && !zones} retry={refresh} />
       {zones?.length === 0 && <p className="state-text">Saugojimo zonų dar nėra. Zoną galite sukurti eksponatų registre.</p>}
       {zone && zones && (
+        // pakeitus zoną, formą pradedam iš naujo, kad neliktų senų reikšmių
         <ZoneEnvironment
           key={`${zone.id}:${zone.deviceId ?? ""}`}
           zone={zone} zones={zones} selectZone={setZoneId} refreshZones={refresh} loadingZones={loading}
