@@ -19,7 +19,7 @@ namespace MuseumStorage.Api.Migrations
 
             modelBuilder.Entity("MuseumStorage.Api.Entities.EnvironmentSettings", b =>
                 {
-                    b.Property<int>("Id")
+                    b.Property<long>("StorageZoneId")
                         .HasColumnType("INTEGER");
 
                     b.Property<double>("FanOffHumidity")
@@ -40,24 +40,9 @@ namespace MuseumStorage.Api.Migrations
                     b.Property<double>("TemperatureAlarm")
                         .HasColumnType("REAL");
 
-                    b.HasKey("Id");
+                    b.HasKey("StorageZoneId");
 
-                    b.ToTable("EnvironmentSettings", t =>
-                        {
-                            t.HasCheckConstraint("CK_EnvironmentSettings_GlobalId", "Id = 1");
-                        });
-
-                    b.HasData(
-                        new
-                        {
-                            Id = 1,
-                            FanOffHumidity = 65.0,
-                            FanOffTemperature = 25.0,
-                            FanOnHumidity = 70.0,
-                            FanOnTemperature = 26.0,
-                            HumidityAlarm = 80.0,
-                            TemperatureAlarm = 30.0
-                        });
+                    b.ToTable("EnvironmentSettings");
                 });
 
             modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
@@ -205,6 +190,9 @@ namespace MuseumStorage.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("DeviceId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -214,7 +202,21 @@ namespace MuseumStorage.Api.Migrations
                     b.HasIndex("Code")
                         .IsUnique();
 
+                    b.HasIndex("DeviceId")
+                        .IsUnique();
+
                     b.ToTable("StorageZones");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Api.Entities.EnvironmentSettings", b =>
+                {
+                    b.HasOne("MuseumStorage.Api.Entities.StorageZone", "StorageZone")
+                        .WithOne()
+                        .HasForeignKey("MuseumStorage.Api.Entities.EnvironmentSettings", "StorageZoneId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("StorageZone");
                 });
 
             modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>

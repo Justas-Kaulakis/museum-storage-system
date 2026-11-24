@@ -67,8 +67,9 @@ public class StorageZonesController(MuseumStorageDbContext dbContext) : Controll
 
         zone.Code = request.Code.Trim();
         zone.Name = request.Name.Trim();
+        zone.DeviceId = string.IsNullOrWhiteSpace(request.DeviceId) ? null : request.DeviceId.Trim();
         if (zone.Id == 0)
-            dbContext.StorageZones.Add(zone);
+            dbContext.EnvironmentSettings.Add(new EnvironmentSettings { StorageZone = zone });
 
         try
         {
@@ -81,7 +82,11 @@ public class StorageZonesController(MuseumStorageDbContext dbContext) : Controll
         }
         catch (DbUpdateException exception) when (exception.InnerException is SqliteException { SqliteExtendedErrorCode: raw.SQLITE_CONSTRAINT_UNIQUE })
         {
-            ModelState.AddModelError(nameof(request.Code), "Saugojimo zona su šiuo kodu jau yra.");
+            if (zone.DeviceId is not null && await dbContext.StorageZones.AnyAsync(x => x.Id != zone.Id && x.DeviceId == zone.DeviceId, cancellationToken))
+                ModelState.AddModelError(nameof(request.DeviceId), "Šis įrenginys jau priskirtas kitai zonai.");
+            else
+                ModelState.AddModelError(nameof(request.Code), "Saugojimo zona su šiuo kodu jau yra.");
+
             return ValidationProblem(statusCode: StatusCodes.Status400BadRequest, modelStateDictionary: ModelState);
         }
     }

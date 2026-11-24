@@ -20,20 +20,15 @@ public class MuseumStorageDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var settings = modelBuilder.Entity<EnvironmentSettings>();
-        settings.ToTable(table => table.HasCheckConstraint("CK_EnvironmentSettings_GlobalId", "Id = 1"));
-        settings.Property(x => x.Id).ValueGeneratedNever();
-        settings.HasData(new EnvironmentSettings
-        {
-            Id = Entities.EnvironmentSettings.GlobalId,
-            FanOnTemperature = 26.0,
-            FanOffTemperature = 25.0,
-            FanOnHumidity = 70.0,
-            FanOffHumidity = 65.0,
-            TemperatureAlarm = 30.0,
-            HumidityAlarm = 80.0
-        });
+        settings.HasKey(x => x.StorageZoneId);
+        settings.HasOne(x => x.StorageZone)
+            .WithOne()
+            .HasForeignKey<EnvironmentSettings>(x => x.StorageZoneId)
+            .OnDelete(DeleteBehavior.Cascade);
 
-        modelBuilder.Entity<StorageZone>().HasIndex(x => x.Code).IsUnique();
+        var zones = modelBuilder.Entity<StorageZone>();
+        zones.HasIndex(x => x.Code).IsUnique();
+        zones.HasIndex(x => x.DeviceId).IsUnique();
         var locations = modelBuilder.Entity<StorageLocation>();
         locations.HasIndex(x => x.Code).IsUnique();
         locations.HasOne(x => x.StorageZone)

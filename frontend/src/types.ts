@@ -22,9 +22,13 @@ export interface StorageZone {
   id: number;
   code: string;
   name: string;
+  deviceId: string | null;
 }
 
-export interface StorageLocation extends StorageZone {
+export interface StorageLocation {
+  id: number;
+  code: string;
+  name: string;
   storageZoneId: number;
   storageZoneCode: string;
   storageZoneName: string;

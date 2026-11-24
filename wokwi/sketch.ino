@@ -220,7 +220,8 @@ void fetchEnvironmentSettings()
 {
     WiFiClient client;
     HTTPClient http;
-    if (!beginRequest(http, client, "/api/environment-settings")) {
+    const String path = String("/api/environment-settings?deviceId=") + DEVICE_ID;
+    if (!beginRequest(http, client, path.c_str())) {
         Serial.println("Settings GET could not start");
         return;
     }

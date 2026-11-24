@@ -49,7 +49,7 @@ export function StorageSection({ items, zones, onChanged, locationLink }: {
     const body = {
       code: fields.get("code"),
       name: fields.get("name"),
-      ...(isLocation && { storageZoneId: Number(fields.get("storageZoneId")) }),
+      ...(isLocation ? { storageZoneId: Number(fields.get("storageZoneId")) } : { deviceId: fields.get("deviceId") }),
     };
     setSaving(true);
     setError("");
@@ -66,7 +66,7 @@ export function StorageSection({ items, zones, onChanged, locationLink }: {
     }
   }
 
-  async function remove(item: StorageZone) {
+  async function remove(item: StorageZone | StorageLocation) {
     if (!window.confirm(`Ar pašalinti „${item.name}“?`)) return;
     setSaving(true);
     setError("");
@@ -110,7 +110,7 @@ export function StorageSection({ items, zones, onChanged, locationLink }: {
           </div>
           <div className="table-wrap">
             <table>
-              <thead><tr><th scope="col">Kodas</th><th scope="col">Pavadinimas</th>{isLocation && <th scope="col">Saugojimo zona</th>}<th scope="col">Veiksmai</th></tr></thead>
+              <thead><tr><th scope="col">Kodas</th><th scope="col">Pavadinimas</th><th scope="col">{isLocation ? "Saugojimo zona" : "Įrenginio ID"}</th><th scope="col">Veiksmai</th></tr></thead>
               <tbody>
                 {filtered?.map((item) => (
                   <tr key={item.id}>
@@ -118,14 +118,14 @@ export function StorageSection({ items, zones, onChanged, locationLink }: {
                     <td>{"storageZoneId" in item && locationLink
                       ? <Link className="table-link" to={locationLink(item)}>{item.name}</Link>
                       : item.name}</td>
-                    {"storageZoneId" in item && <td>{item.storageZoneName}</td>}
+                    <td>{"storageZoneId" in item ? item.storageZoneName : item.deviceId ?? "—"}</td>
                     <td><div className="button-group">
                       <button type="button" className="button" disabled={saving} onClick={() => open(item)}>Redaguoti</button>
                       <button type="button" className="button" disabled={saving} onClick={() => void remove(item)}>Šalinti</button>
                     </div></td>
                   </tr>
                 ))}
-                {filtered?.length === 0 && <tr><td className="empty-cell" colSpan={isLocation ? 4 : 3}>
+                {filtered?.length === 0 && <tr><td className="empty-cell" colSpan={4}>
                   {isLocation ? "Saugojimo vietų nerasta." : "Saugojimo zonų nerasta."}
                 </td></tr>}
               </tbody>
@@ -144,6 +144,7 @@ export function StorageSection({ items, zones, onChanged, locationLink }: {
             <div className="field-grid">
               <label>Kodas<input name="code" required autoFocus defaultValue={editing?.code} placeholder={isLocation ? "A-SHELF-01" : "ZONE-A"} /></label>
               <label>Pavadinimas<input name="name" required defaultValue={editing?.name} /></label>
+              {!isLocation && <label>Įrenginio ID<input name="deviceId" defaultValue={editing && "deviceId" in editing ? editing.deviceId ?? "" : ""} placeholder="pvz. museum-storage-01" /></label>}
               {zones && <label>Saugojimo zona
                 <select name="storageZoneId" required defaultValue={editing && "storageZoneId" in editing ? String(editing.storageZoneId) : ""}>
                   <option value="">Pasirinkite saugojimo zoną</option>

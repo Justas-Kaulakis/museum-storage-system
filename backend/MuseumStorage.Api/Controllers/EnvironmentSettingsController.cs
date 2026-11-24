@@ -7,7 +7,7 @@ using MuseumStorage.Api.Data;
 namespace MuseumStorage.Api.Controllers;
 
 [ApiController]
-[Route("api/environment-settings")]
+[Route("api/storage-zones/{zoneId:long}/environment-settings")]
 public class EnvironmentSettingsController : ControllerBase
 {
     private readonly MuseumStorageDbContext _dbContext;
@@ -18,10 +18,22 @@ public class EnvironmentSettingsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<EnvironmentSettingsValues>> Get(CancellationToken cancellationToken)
+    public Task<ActionResult<EnvironmentSettingsValues>> Get(long zoneId, CancellationToken cancellationToken) =>
+        ReadAsync(_dbContext.EnvironmentSettings.Where(x => x.StorageZoneId == zoneId), cancellationToken);
+
+    [HttpGet("/api/environment-settings")]
+    public async Task<ActionResult<EnvironmentSettingsValues>> GetByDeviceId([FromQuery] string? deviceId, CancellationToken cancellationToken)
     {
-        var settings = await _dbContext.EnvironmentSettings
-            .Where(x => x.Id == EnvironmentSettings.GlobalId)
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return NotFound();
+
+        var id = deviceId.Trim();
+        return await ReadAsync(_dbContext.EnvironmentSettings.Where(x => x.StorageZone.DeviceId == id), cancellationToken);
+    }
+
+    private async Task<ActionResult<EnvironmentSettingsValues>> ReadAsync(IQueryable<EnvironmentSettings> query, CancellationToken cancellationToken)
+    {
+        var settings = await query
             .Select(x => new EnvironmentSettingsValues
             {
                 FanOnTemperature = x.FanOnTemperature,
@@ -38,7 +50,7 @@ public class EnvironmentSettingsController : ControllerBase
 
     [HttpPut]
     public async Task<ActionResult<EnvironmentSettingsValues>> Put(
-        EnvironmentSettingsValues settings, CancellationToken cancellationToken)
+        long zoneId, EnvironmentSettingsValues settings, CancellationToken cancellationToken)
     {
         if (!IsTemperatureInRange(settings.FanOnTemperature) ||
             !IsTemperatureInRange(settings.FanOffTemperature) ||
@@ -66,7 +78,7 @@ public class EnvironmentSettingsController : ControllerBase
             return ValidationProblem(statusCode: StatusCodes.Status400BadRequest, modelStateDictionary: ModelState);
 
         var updated = await _dbContext.EnvironmentSettings
-            .Where(x => x.Id == EnvironmentSettings.GlobalId)
+            .Where(x => x.StorageZoneId == zoneId)
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(x => x.FanOnTemperature, settings.FanOnTemperature)
                 .SetProperty(x => x.FanOffTemperature, settings.FanOffTemperature)

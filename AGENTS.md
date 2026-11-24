@@ -225,10 +225,10 @@ Do not replace the current architecture with minimal APIs or a different framewo
 
 ## Current backend state
 
-The backend persists sensor readings, environmental settings, exhibits, storage zones, storage locations, and storage-operation history in SQLite. Each storage location belongs to one storage zone.
+The backend persists sensor readings, environmental settings, exhibits, storage zones, storage locations, and storage-operation history in SQLite. Each storage location belongs to one storage zone. Each zone has one set of environmental thresholds and may have a unique device ID.
 
-- POST /api/sensor-readings stores ESP32 telemetry. GET /api/sensor-readings returns recent readings newest-first.
-- GET and PUT /api/environment-settings read and update the environmental thresholds the ESP32 fetches.
+- POST /api/sensor-readings stores ESP32 telemetry. GET /api/sensor-readings returns recent readings newest-first and can filter by deviceId. Zones are associated with telemetry through that device ID.
+- GET and PUT /api/storage-zones/{id}/environment-settings read and update the thresholds for that zone. The Wokwi ESP32 simulates one zone controller and fetches its thresholds with GET /api/environment-settings?deviceId=museum-storage-01.
 - /api/storage-zones, /api/storage-locations, and /api/exhibits support listing, retrieving, creating, updating, and deleting registry entries. Locations require an existing zone and cannot be deleted while they contain exhibits. Zones cannot be deleted while they contain locations.
 - GET /api/exhibits accepts optional search, category, status, zoneId, and storageLocationId filters. Exhibits can also be looked up by code. The registry page filters zones and locations and links locations to the filtered exhibit list.
 - POST /api/exhibits/scan-qr provides QR-based exhibit lookup.

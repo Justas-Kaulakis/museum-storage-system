@@ -18,12 +18,16 @@ public class SensorReadingsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<SensorReading>>> GetAll()
+    public async Task<ActionResult<IEnumerable<SensorReading>>> GetAll([FromQuery] string? deviceId = null, CancellationToken cancellationToken = default)
     {
-        var readings = await _dbContext.SensorReadings
+        var query = _dbContext.SensorReadings.AsNoTracking();
+        if (!string.IsNullOrEmpty(deviceId))
+            query = query.Where(x => x.DeviceId == deviceId);
+
+        var readings = await query
             .OrderByDescending(x => x.CreatedAt)
             .Take(100)
-            .ToListAsync();
+            .ToListAsync(cancellationToken);
 
         return Ok(readings);
     }

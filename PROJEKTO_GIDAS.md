@@ -51,7 +51,7 @@ backend/
 Backend atsakingas už:
 
 - jutiklių matavimų saugojimą;
-- aplinkos ribinių reikšmių saugojimą;
+- kiekvienos saugojimo zonos aplinkos ribinių reikšmių saugojimą;
 - eksponatų, saugojimo zonų ir vietų registrą;
 - padėjimo, paėmimo ir perkėlimo operacijas;
 - operacijų istoriją;
@@ -150,7 +150,7 @@ Frontend `/api/...` užklausas Vite persiunčia į `http://localhost:5054`.
 
 ## `wokwi/`
 
-Wokwi simuliuoja fizinę sistemos dalį su ESP32.
+Wokwi ESP32 simuliuoja vienos saugojimo zonos valdiklį. Norėdami susieti jo konfigūraciją ir telemetriją su zona, eksponatų registre zonai priskirkite įrenginio ID `museum-storage-01`.
 
 Naudojama:
 

@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import type { FormEvent } from "react";
 import { apiFetch, errorMessage, jsonRequest } from "./api";
 import { ErrorNotice, formatTimestamp, LoadNotice, useApiData } from "./shared";
-import type { EnvironmentSettings, SensorReading } from "./types";
+import { ZoneOptions, zonesPath } from "./storage";
+import type { EnvironmentSettings, SensorReading, StorageZone } from "./types";
 
-const settingsPath = "/environment-settings";
 const measurementFormat = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 type ThresholdField = keyof EnvironmentSettings;
 const thresholdRows: { label: string; temperature: ThresholdField; humidity: ThresholdField }[] = [
@@ -21,15 +21,46 @@ const thresholdLabels: Record<ThresholdField, string> = {
   humidityAlarm: "Drėgmės aliarmo riba",
 };
 
-async function loadEnvironment(signal: AbortSignal) {
-  const [readings, settings] = await Promise.all([
-    apiFetch<SensorReading[]>("/sensor-readings", { signal }),
-    apiFetch<EnvironmentSettings>(settingsPath, { signal }),
-  ]);
-  return { reading: readings[0], settings };
+function loadZones(signal: AbortSignal) {
+  return apiFetch<StorageZone[]>(zonesPath, { signal });
 }
 
 export function EnvironmentPage() {
+  const { data: zones, loading, error, refresh } = useApiData(loadZones);
+  const [zoneId, setZoneId] = useState<number | null>(null);
+  const zone = zones?.find((item) => item.id === zoneId) ?? zones?.[0];
+
+  return (
+    <>
+      <header className="page-heading"><h1>Aplinkos stebėjimas</h1></header>
+      <LoadNotice error={error} loading={loading && !zones} retry={refresh} />
+      {zones?.length === 0 && <p className="state-text">Saugojimo zonų dar nėra. Zoną galite sukurti eksponatų registre.</p>}
+      {zone && zones && (
+        <ZoneEnvironment
+          key={`${zone.id}:${zone.deviceId ?? ""}`}
+          zone={zone} zones={zones} selectZone={setZoneId} refreshZones={refresh} loadingZones={loading}
+        />
+      )}
+    </>
+  );
+}
+
+function ZoneEnvironment({ zone, zones, selectZone, refreshZones, loadingZones }: {
+  zone: StorageZone;
+  zones: StorageZone[];
+  selectZone: (id: number) => void;
+  refreshZones: () => void;
+  loadingZones: boolean;
+}) {
+  const settingsPath = `${zonesPath}/${zone.id}/environment-settings`;
+  const deviceId = zone.deviceId;
+  const loadEnvironment = useCallback(async (signal: AbortSignal) => {
+    const [settings, readings] = await Promise.all([
+      apiFetch<EnvironmentSettings>(settingsPath, { signal }),
+      deviceId ? apiFetch<SensorReading[]>(`/sensor-readings?${new URLSearchParams({ deviceId })}`, { signal }) : [],
+    ]);
+    return { reading: readings[0], settings };
+  }, [settingsPath, deviceId]);
   const { data, setData, loading, error, refresh } = useApiData(loadEnvironment);
   const [edits, setEdits] = useState<{ [field: string]: string }>({});
   const [saving, setSaving] = useState(false);
@@ -51,7 +82,7 @@ export function EnvironmentPage() {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!data || saving || loading) return;
+    if (!data || saving || loading || loadingZones || error) return;
 
     const form = new FormData(event.currentTarget);
     const thresholds: EnvironmentSettings = {
@@ -80,10 +111,14 @@ export function EnvironmentPage() {
 
   return (
     <>
-      <header className="page-heading">
-        <h1>Aplinkos stebėjimas</h1>
-        <button className="button" onClick={refresh} disabled={loading || saving}>Atnaujinti</button>
-      </header>
+      <div className="inline-form">
+        <label>Saugojimo zona
+          <select value={zone.id} onChange={(event) => selectZone(Number(event.target.value))} disabled={saving}>
+            <ZoneOptions zones={zones} />
+          </select>
+        </label>
+        <button className="button" onClick={() => { refreshZones(); refresh(); }} disabled={loading || loadingZones || saving}>Atnaujinti</button>
+      </div>
       <LoadNotice error={error} loading={loading} retry={refresh} />
 
       <section className="panel" aria-labelledby="current-heading">
@@ -91,7 +126,8 @@ export function EnvironmentPage() {
           <h2 id="current-heading">Dabartiniai rodmenys</h2>
           {reading && <p className="report-time">Paskutinis matavimas <time dateTime={reading.createdAt}>{formatTimestamp(reading.createdAt)}</time></p>}
         </div>
-        {!reading && data && <p className="state-text panel-message">Laukiama pirmųjų jutiklių rodmenų.</p>}
+        {!deviceId && <p className="state-text panel-message">Šiai zonai nepriskirtas aplinkos stebėjimo įrenginys.</p>}
+        {deviceId && !reading && data && !loading && !error && <p className="state-text panel-message">Šiai zonai dar nėra aplinkos matavimo duomenų.</p>}
         <dl className="measurement-grid">
           {measurements.map(({ label, value, unit }) => (
             <div key={label} className="measurement">
@@ -141,7 +177,7 @@ export function EnvironmentPage() {
           <div className="panel-heading"><h2 id="threshold-form-heading">Aplinkos nustatymai</h2></div>
           <form className="form-body" onSubmit={save}>
             {saveError && <ErrorNotice message={saveError} />}
-            <fieldset disabled={saving || loading}>
+            <fieldset disabled={saving || loading || loadingZones || Boolean(error)}>
               {thresholdRows.map(({ label, temperature, humidity }) => (
                 <div key={label} className="threshold-row">
                   <h3>{label}</h3>

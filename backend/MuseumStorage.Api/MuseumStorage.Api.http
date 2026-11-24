@@ -1,4 +1,5 @@
 @MuseumStorage.Api_HostAddress = http://localhost:5054
+@ZoneId = 1
 
 GET {{MuseumStorage.Api_HostAddress}}/api/sensor-readings
 Accept: application/json
@@ -19,12 +20,19 @@ Content-Type: application/json
 
 ###
 
-GET {{MuseumStorage.Api_HostAddress}}/api/environment-settings
+# Assign museum-storage-01 to a zone in the registry before requesting its settings by device.
+GET {{MuseumStorage.Api_HostAddress}}/api/environment-settings?deviceId=museum-storage-01
 Accept: application/json
 
 ###
 
-PUT {{MuseumStorage.Api_HostAddress}}/api/environment-settings
+# Use an existing zone ID from GET /api/storage-zones.
+GET {{MuseumStorage.Api_HostAddress}}/api/storage-zones/{{ZoneId}}/environment-settings
+Accept: application/json
+
+###
+
+PUT {{MuseumStorage.Api_HostAddress}}/api/storage-zones/{{ZoneId}}/environment-settings
 Content-Type: application/json
 
 {
