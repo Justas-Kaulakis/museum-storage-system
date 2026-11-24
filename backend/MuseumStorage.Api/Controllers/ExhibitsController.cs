@@ -28,13 +28,45 @@ public class ExhibitsController : ControllerBase
         _dbContext = dbContext;
     }
 
-    private IQueryable<Exhibit> ExhibitsWithLocation => _dbContext.Exhibits.AsNoTracking().Include(x => x.StorageLocation);
+    private IQueryable<Exhibit> ExhibitsWithLocation =>
+        _dbContext.Exhibits.AsNoTracking().Include(x => x.StorageLocation).ThenInclude(x => x!.StorageZone);
 
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<ExhibitResponse>>> GetAll(CancellationToken cancellationToken)
+    public async Task<ActionResult<IEnumerable<ExhibitResponse>>> GetAll(
+        CancellationToken cancellationToken, [FromQuery] string? search = null, [FromQuery] string? category = null,
+        [FromQuery] string? status = null, [FromQuery] long? zoneId = null, [FromQuery] long? storageLocationId = null)
     {
-        var exhibits = await ExhibitsWithLocation.OrderBy(x => x.Code).ToListAsync(cancellationToken);
-        return Ok(exhibits.Select(ToResponse));
+        var query = ExhibitsWithLocation;
+        if (status is not null)
+        {
+            if (ParseStatus(status) is not { } exhibitStatus)
+                return InvalidRequest(nameof(status), "Pasirinkite galimą eksponato būseną.");
+
+            query = query.Where(x => x.Status == exhibitStatus);
+        }
+
+        if (zoneId.HasValue)
+            query = query.Where(x => x.StorageLocation!.StorageZoneId == zoneId.Value);
+
+        if (storageLocationId.HasValue)
+            query = query.Where(x => x.StorageLocationId == storageLocationId.Value);
+
+        IEnumerable<Exhibit> exhibits = await query.OrderBy(x => x.Code).ToListAsync(cancellationToken);
+        // SQLite case folding only covers ASCII. Match Lithuanian text in the small registry in memory.
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            exhibits = exhibits.Where(x => x.Code.Contains(term, StringComparison.OrdinalIgnoreCase)
+                || x.Name.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(category))
+        {
+            var term = category.Trim();
+            exhibits = exhibits.Where(x => x.Category?.Contains(term, StringComparison.OrdinalIgnoreCase) == true);
+        }
+
+        return Ok(exhibits.Select(ToResponse).ToList());
     }
 
     [HttpGet("{id:long}")]
@@ -143,6 +175,16 @@ public class ExhibitsController : ControllerBase
         return error is null ? Ok(ToResponse(exhibit)) : error;
     }
 
+    [HttpDelete("{id:long}")]
+    public async Task<ActionResult> Delete(long id, CancellationToken cancellationToken)
+    {
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await _dbContext.StorageOperations.Where(x => x.ExhibitId == id).ExecuteDeleteAsync(cancellationToken);
+        var deleted = await _dbContext.Exhibits.Where(x => x.Id == id).ExecuteDeleteAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return deleted == 0 ? NotFound() : NoContent();
+    }
+
     [HttpPost("{id:long}/check-in")]
     public Task<ActionResult<ExhibitResponse>> CheckIn(long id, StorageOperationRequest request, CancellationToken cancellationToken) =>
         PerformOperationAsync(id, StorageOperationType.CheckIn, request.StorageLocationId, cancellationToken);
@@ -164,14 +206,16 @@ public class ExhibitsController : ControllerBase
         var operations = await _dbContext.StorageOperations.AsNoTracking()
             .Where(x => x.ExhibitId == id)
             .Include(x => x.FromStorageLocation)
+            .ThenInclude(x => x!.StorageZone)
             .Include(x => x.ToStorageLocation)
+            .ThenInclude(x => x!.StorageZone)
             .OrderByDescending(x => x.CreatedAt)
             .ThenByDescending(x => x.Id)
             .ToListAsync(cancellationToken);
 
         return Ok(operations.Select(x => new StorageOperationResponse(
             x.Id, x.ExhibitId, x.Type.ToString(), x.FromStorageLocationId, x.ToStorageLocationId,
-            x.CreatedAt, x.FromStorageLocation, x.ToStorageLocation)));
+            x.CreatedAt, StorageLocationResponse.From(x.FromStorageLocation), StorageLocationResponse.From(x.ToStorageLocation))));
     }
 
     private async Task<ActionResult<ExhibitResponse>> PerformOperationAsync(
@@ -197,7 +241,7 @@ public class ExhibitsController : ControllerBase
         StorageLocation? location = null;
         if (targetLocationId is long locationId)
         {
-            location = await _dbContext.StorageLocations.FindAsync([locationId], cancellationToken);
+            location = await _dbContext.StorageLocations.Include(x => x.StorageZone).SingleOrDefaultAsync(x => x.Id == locationId, cancellationToken);
             if (location is null)
                 return InvalidRequest(nameof(Exhibit.StorageLocationId), "Storage location does not exist.");
         }
@@ -215,12 +259,7 @@ public class ExhibitsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Name))
             ModelState.AddModelError(nameof(request.Name), "Name is required.");
 
-        var status = request.Status switch
-        {
-            nameof(ExhibitStatus.Stored) => ExhibitStatus.Stored,
-            nameof(ExhibitStatus.CheckedOut) => ExhibitStatus.CheckedOut,
-            _ => (ExhibitStatus?)null
-        };
+        var status = ParseStatus(request.Status);
 
         if (status is null)
             ModelState.AddModelError(nameof(request.Status), "Status must be Stored or CheckedOut.");
@@ -235,7 +274,7 @@ public class ExhibitsController : ControllerBase
         StorageLocation? location = null;
         if (request.StorageLocationId is long locationId)
         {
-            location = await _dbContext.StorageLocations.FindAsync([locationId], cancellationToken);
+            location = await _dbContext.StorageLocations.Include(x => x.StorageZone).SingleOrDefaultAsync(x => x.Id == locationId, cancellationToken);
             if (location is null)
                 return InvalidRequest(nameof(request.StorageLocationId), "Storage location does not exist.");
         }
@@ -314,7 +353,14 @@ public class ExhibitsController : ControllerBase
         return ValidationProblem(statusCode: StatusCodes.Status400BadRequest, modelStateDictionary: ModelState);
     }
 
+    private static ExhibitStatus? ParseStatus(string status) => status switch
+    {
+        nameof(ExhibitStatus.Stored) => ExhibitStatus.Stored,
+        nameof(ExhibitStatus.CheckedOut) => ExhibitStatus.CheckedOut,
+        _ => null
+    };
+
     private static ExhibitResponse ToResponse(Exhibit exhibit) =>
         new(exhibit.Id, exhibit.Code, exhibit.Name, exhibit.Description, exhibit.Category,
-            exhibit.Status.ToString(), exhibit.StorageLocationId, exhibit.StorageLocation);
+            exhibit.Status.ToString(), exhibit.StorageLocationId, StorageLocationResponse.From(exhibit.StorageLocation));
 }

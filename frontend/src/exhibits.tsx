@@ -1,33 +1,66 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router";
 import { ApiError, apiFetch, errorMessage, jsonRequest } from "./api";
 import { ErrorNotice, formatTimestamp, LoadNotice, useApiData } from "./shared";
-import type { Exhibit, ExhibitInput, ExhibitStatus, StorageLocation, StorageOperation } from "./types";
+import { locationsPath, StorageSection, ZoneOptions, zonesPath } from "./storage";
+import type { Exhibit, ExhibitInput, ExhibitStatus, StorageLocation, StorageOperation, StorageZone } from "./types";
 
 const exhibitsPath = "/exhibits";
-const locationsPath = "/storage-locations";
 const storageLocationsLink = "/exhibits#storage-locations";
+const exhibitFilterNames = ["search", "category", "status", "zoneId", "storageLocationId"] as const;
 
 async function loadRegistry(signal: AbortSignal) {
-  const [exhibits, locations] = await Promise.all([
-    apiFetch<Exhibit[]>(exhibitsPath, { signal }),
+  const [zones, locations] = await Promise.all([
+    apiFetch<StorageZone[]>(zonesPath, { signal }),
     apiFetch<StorageLocation[]>(locationsPath, { signal }),
   ]);
-  return { exhibits, locations };
+  return { zones, locations };
 }
 
 export function RegistryPage() {
   const { data, loading, error, refresh } = useApiData(loadRegistry);
   const [panel, setPanel] = useState<"create" | "scan" | null>(null);
-  const exhibits = data?.exhibits;
+  const [revision, setRevision] = useState(0);
+  const [filters, setFilters] = useSearchParams();
   const { hash, key } = useLocation();
+  const query = filters.toString();
 
   useEffect(() => {
-    if (hash === "#storage-locations") {
-      document.getElementById("storage-locations")?.scrollIntoView();
+    if (hash === "#storage-locations" || hash === "#exhibits-heading") {
+      document.getElementById(hash.slice(1))?.scrollIntoView();
     }
   }, [hash, key, loading]);
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const fields = new FormData(event.currentTarget);
+    const next = new URLSearchParams();
+    for (const name of exhibitFilterNames) {
+      const value = String(fields.get(name) ?? "").trim();
+      if (value) next.set(name, value);
+    }
+    setFilters(next);
+  }
+
+  function shelfLink(location: StorageLocation) {
+    const next = new URLSearchParams(filters);
+    next.set("storageLocationId", String(location.id));
+    if (next.get("status") === "CheckedOut") next.delete("status");
+    if (next.has("zoneId") && next.get("zoneId") !== String(location.storageZoneId)) next.delete("zoneId");
+    return `${exhibitsPath}?${next}#exhibits-heading`;
+  }
+
+  function clearLocation() {
+    const next = new URLSearchParams(filters);
+    next.delete("storageLocationId");
+    setFilters(next);
+  }
+
+  function refreshRegistry() {
+    refresh();
+    setRevision((previous) => previous + 1);
+  }
 
   return (
     <>
@@ -39,118 +72,87 @@ export function RegistryPage() {
             onClick={() => setPanel(panel === "create" ? null : "create")}>Naujas eksponatas</button>
         </div>
       </header>
-      <LoadNotice error={error} loading={loading} retry={refresh} />
-      {panel === "create" && data && <CreateExhibitForm locations={data.locations} />}
+      <LoadNotice error={error} loading={loading} retry={refreshRegistry} />
+      {panel === "create" && data && <ExhibitForm locations={data.locations} onCancel={() => setPanel(null)} />}
       {panel === "scan" && <ScanQrForm />}
 
-      {exhibits && (
-        <section className="panel" aria-labelledby="exhibits-heading">
-          <div className="panel-heading"><h2 id="exhibits-heading">Eksponatai</h2></div>
-          <div className="table-wrap">
-            <table className="exhibit-table">
-              <thead><tr><th scope="col">Kodas</th><th scope="col">Pavadinimas</th><th scope="col">Kategorija</th><th scope="col">Būsena</th><th scope="col">Saugojimo vieta</th></tr></thead>
-              <tbody>
-                {exhibits.map((exhibit) => (
-                  <tr key={exhibit.id}>
-                    <th scope="row"><Link className="code table-link" to={`/exhibits/${exhibit.id}`}>{exhibit.code}</Link></th>
-                    <td>{exhibit.name}</td>
-                    <td>{exhibit.category || "—"}</td>
-                    <td><StatusBadge status={exhibit.status} /></td>
-                    <td><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></td>
-                  </tr>
-                ))}
-                {exhibits.length === 0 && <tr><td className="empty-cell" colSpan={5}>Eksponatų dar neužregistruota.</td></tr>}
-              </tbody>
-            </table>
+      <section className="panel" aria-labelledby="exhibits-heading">
+        <div className="panel-heading"><h2 id="exhibits-heading">Eksponatai</h2></div>
+        <form key={query} className="form-body" onSubmit={applyFilters}>
+          <div className="field-grid">
+            <label>Paieška pagal kodą arba pavadinimą<input type="search" name="search" defaultValue={filters.get("search") ?? ""} /></label>
+            <label>Kategorija<input type="search" name="category" defaultValue={filters.get("category") ?? ""} /></label>
+            <label>Būsena
+              <select name="status" defaultValue={filters.get("status") ?? ""}>
+                <option value="">Visos būsenos</option>
+                <option value="Stored">Saugykloje</option>
+                <option value="CheckedOut">Paimtas iš saugyklos</option>
+              </select>
+            </label>
+            <label>Saugojimo zona
+              <select name="zoneId" defaultValue={filters.get("zoneId") ?? ""} key={data ? "loaded" : "loading"}>
+                <option value="">Visos zonos</option>
+                <ZoneOptions zones={data?.zones ?? []} />
+              </select>
+            </label>
+            <label>Saugojimo vieta
+              <select name="storageLocationId" defaultValue={filters.get("storageLocationId") ?? ""} key={data ? "loaded" : "loading"}>
+                <option value="">Visos saugojimo vietos</option>
+                <LocationOptions locations={data?.locations ?? []} />
+              </select>
+            </label>
           </div>
-        </section>
-      )}
-      <StorageLocationsSection locations={data?.locations} onCreated={refresh} />
+          <div className="form-actions">
+            <button className="button primary" type="submit">Filtruoti</button>
+            <button className="button" type="button" onClick={(event) => { event.currentTarget.form?.reset(); setFilters({}); }}>Išvalyti filtrus</button>
+            {filters.has("storageLocationId") && <button className="button" type="button" onClick={clearLocation}>Pašalinti saugojimo vietos filtrą</button>}
+          </div>
+        </form>
+        <ExhibitResults key={`${revision}:${query}`} query={query} />
+      </section>
+      <StorageSection items={data?.zones} onChanged={refreshRegistry} />
+      <StorageSection items={data?.locations} zones={data?.zones ?? []} onChanged={refreshRegistry} locationLink={shelfLink} />
     </>
   );
 }
 
-function StorageLocationsSection({ locations, onCreated }: {
-  locations: StorageLocation[] | undefined;
-  onCreated: () => void;
-}) {
-  const [showForm, setShowForm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+function ExhibitResults({ query }: { query: string }) {
+  const load = useCallback((signal: AbortSignal) =>
+    apiFetch<Exhibit[]>(query ? `${exhibitsPath}?${query}` : exhibitsPath, { signal }), [query]);
+  const { data: exhibits, loading, error, refresh } = useApiData(load);
 
-  function toggleForm() {
-    setShowForm(!showForm);
-    setError("");
-    setNotice("");
-  }
-
-  async function createLocation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (saving) return;
-
-    const fields = new FormData(event.currentTarget);
-    setSaving(true);
-    setError("");
-    try {
-      const created = await apiFetch<StorageLocation>(locationsPath, jsonRequest("POST", {
-        code: fields.get("code"),
-        name: fields.get("name"),
-      }));
-      setShowForm(false);
-      setNotice(`Sukurta saugojimo vieta „${created.name}“.`);
-      onCreated();
-    } catch (failure) {
-      setError(errorMessage(failure, "Nepavyko sukurti saugojimo vietos."));
-    } finally {
-      setSaving(false);
-    }
-  }
+  if (!exhibits) return <div className="form-body"><LoadNotice error={error} loading={loading} retry={refresh} /></div>;
 
   return (
-    <section id="storage-locations" className="panel" aria-labelledby="locations-heading">
-      <div className="panel-heading">
-        <h2 id="locations-heading">Saugojimo vietos</h2>
-        <button className="button primary" aria-expanded={showForm} disabled={saving} onClick={toggleForm}>
-          {showForm ? "Atšaukti" : "Nauja saugojimo vieta"}
-        </button>
-      </div>
-      {locations && (
-        <div className="table-wrap">
-          <table>
-            <thead><tr><th scope="col">Kodas</th><th scope="col">Pavadinimas</th></tr></thead>
-            <tbody>
-              {locations.map((location) => (
-                <tr key={location.id}><th scope="row" className="code">{location.code}</th><td>{location.name}</td></tr>
-              ))}
-              {locations.length === 0 && <tr><td colSpan={2} className="empty-cell">Saugojimo vietų dar neužregistruota.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {notice && <div className="form-body"><p className="notice notice-success" role="status">{notice}</p></div>}
-      {showForm && (
-        <form className="form-body" onSubmit={createLocation}>
-          {error && <ErrorNotice message={error} />}
-          <fieldset disabled={saving}>
-            <div className="field-grid">
-              <label>Kodas<input name="code" required placeholder="SHELF-A1" /></label>
-              <label>Pavadinimas<input name="name" required /></label>
-            </div>
-            <div className="form-actions">
-              <button className="button primary" type="submit">{saving ? "Kuriama…" : "Sukurti"}</button>
-            </div>
-          </fieldset>
-        </form>
-      )}
-    </section>
+    <div className="table-wrap">
+      <table className="exhibit-table">
+        <thead><tr><th scope="col">Kodas</th><th scope="col">Pavadinimas</th><th scope="col">Kategorija</th><th scope="col">Būsena</th><th scope="col">Saugojimo vieta</th></tr></thead>
+        <tbody>
+          {exhibits.map((exhibit) => (
+            <tr key={exhibit.id}>
+              <th scope="row"><Link className="code table-link" to={`/exhibits/${exhibit.id}`}>{exhibit.code}</Link></th>
+              <td>{exhibit.name}</td>
+              <td>{exhibit.category || "—"}</td>
+              <td><StatusBadge status={exhibit.status} /></td>
+              <td><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></td>
+            </tr>
+          ))}
+          {exhibits.length === 0 && <tr><td className="empty-cell" colSpan={5}>Eksponatų nerasta.</td></tr>}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
-function CreateExhibitForm({ locations }: { locations: StorageLocation[] }) {
+function ExhibitForm({ locations, exhibit, onSaved, onCancel }: {
+  locations: StorageLocation[];
+  exhibit?: Exhibit;
+  onSaved?: () => void;
+  onCancel: () => void;
+}) {
   const navigate = useNavigate();
-  const [status, setStatus] = useState<ExhibitStatus>("CheckedOut");
-  const [location, setLocation] = useState("");
+  const [status, setStatus] = useState<ExhibitStatus>(exhibit?.status ?? "CheckedOut");
+  const [location, setLocation] = useState(String(exhibit?.storageLocationId ?? ""));
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const needsLocation = status === "Stored" && locations.length === 0;
@@ -159,7 +161,7 @@ function CreateExhibitForm({ locations }: { locations: StorageLocation[] }) {
     event.preventDefault();
     if (saving || needsLocation) return;
     const fields = new FormData(event.currentTarget);
-    const exhibit: ExhibitInput = {
+    const input: ExhibitInput = {
       code: String(fields.get("code") ?? ""),
       name: String(fields.get("name") ?? ""),
       category: String(fields.get("category") ?? "").trim() || null,
@@ -170,25 +172,26 @@ function CreateExhibitForm({ locations }: { locations: StorageLocation[] }) {
     setSaving(true);
     setError("");
     try {
-      const created = await apiFetch<Exhibit>(exhibitsPath, jsonRequest("POST", exhibit));
-      navigate(`/exhibits/${created.id}`);
+      const saved = await apiFetch<Exhibit>(exhibit ? `${exhibitsPath}/${exhibit.id}` : exhibitsPath, jsonRequest(exhibit ? "PUT" : "POST", input));
+      if (exhibit) onSaved?.();
+      else navigate(`/exhibits/${saved.id}`);
     } catch (failure) {
-      setError(errorMessage(failure, "Nepavyko sukurti eksponato."));
+      setError(errorMessage(failure, "Nepavyko išsaugoti eksponato."));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <section className="panel" aria-labelledby="create-heading">
-      <div className="panel-heading"><h2 id="create-heading">Naujas eksponatas</h2></div>
+    <section className="panel" aria-labelledby="exhibit-form-heading">
+      <div className="panel-heading"><h2 id="exhibit-form-heading">{exhibit ? "Redaguoti eksponatą" : "Naujas eksponatas"}</h2></div>
       <form className="form-body" onSubmit={submit}>
         {error && <ErrorNotice message={error} />}
         <fieldset disabled={saving}>
           <div className="field-grid">
-            <label>Kodas<input name="code" placeholder="EXHIBIT-0001" required /></label>
-            <label>Pavadinimas<input name="name" required /></label>
-            <label>Kategorija<input name="category" /></label>
+            <label>Kodas<input name="code" placeholder="EXHIBIT-0001" defaultValue={exhibit?.code} required /></label>
+            <label>Pavadinimas<input name="name" defaultValue={exhibit?.name} required /></label>
+            <label>Kategorija<input name="category" defaultValue={exhibit?.category ?? ""} /></label>
             <label>
               Būsena
               <select value={status} onChange={(event) => setStatus(event.target.value as ExhibitStatus)}>
@@ -202,10 +205,13 @@ function CreateExhibitForm({ locations }: { locations: StorageLocation[] }) {
                 <LocationSelect value={location} locations={locations} onChange={setLocation} />
               </label>
             )}
-            <label className="full-width">Aprašymas<textarea name="description" rows={3} /></label>
+            <label className="full-width">Aprašymas<textarea name="description" rows={3} defaultValue={exhibit?.description ?? ""} /></label>
           </div>
           {needsLocation && <p className="state-text"><Link to={storageLocationsLink}>Sukurkite saugojimo vietą</Link>, kad galėtumėte užregistruoti eksponatą kaip esantį saugykloje.</p>}
-          <div className="form-actions"><button className="button primary" disabled={needsLocation} type="submit">{saving ? "Kuriama…" : "Sukurti"}</button></div>
+          <div className="form-actions">
+            <button className="button primary" disabled={needsLocation} type="submit">{saving ? "Išsaugoma…" : exhibit ? "Išsaugoti" : "Sukurti"}</button>
+            <button className="button" type="button" onClick={onCancel}>Atšaukti</button>
+          </div>
         </fieldset>
       </form>
     </section>
@@ -258,6 +264,7 @@ type ExhibitAction = keyof typeof actions;
 const operationLabels = { CheckIn: "Padėti į saugyklą", CheckOut: "Paimti iš saugyklos", Move: "Perkelti" };
 
 export function ExhibitDetail({ id }: { id: string }) {
+  const navigate = useNavigate();
   const path = `${exhibitsPath}/${id}`;
   const load = useCallback((signal: AbortSignal) => Promise.all([
     apiFetch<Exhibit>(path, { signal }),
@@ -269,14 +276,43 @@ export function ExhibitDetail({ id }: { id: string }) {
   const [working, setWorking] = useState<ExhibitAction | null>(null);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const [editNotice, setEditNotice] = useState("");
   const exhibit = data?.[0];
   const isStored = exhibit?.status === "Stored";
   const locations = (data?.[2] ?? []).filter((item) => item.id !== exhibit?.storageLocationId);
   const assignmentAction = isStored ? "move" : "check-in";
   const missing = error instanceof ApiError && error.status === 404;
+  const busy = loading || Boolean(working) || deleting || editing;
+
+  async function remove() {
+    if (!exhibit || busy || !window.confirm(`Ar pašalinti eksponatą „${exhibit.name}“ ir jo operacijų istoriją?`)) return;
+    setDeleting(true);
+    setDetailError("");
+    setEditNotice("");
+    try {
+      await apiFetch<void>(path, { method: "DELETE" });
+      navigate(exhibitsPath, { replace: true });
+    } catch (failure) {
+      setDetailError(errorMessage(failure, "Nepavyko pašalinti eksponato."));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  function saved() {
+    setEditing(false);
+    setEditNotice("Eksponato pakeitimai išsaugoti.");
+    setNotice("");
+    setActionError("");
+    setLocation("");
+    refresh();
+  }
 
   async function apply(action: ExhibitAction) {
-    if (working || loading || error) return;
+    if (busy || error) return;
     setWorking(action);
     setActionError("");
     setNotice("");
@@ -307,17 +343,27 @@ export function ExhibitDetail({ id }: { id: string }) {
         </div>
         <div className="button-group">
           {exhibit && !missing && <StatusBadge status={exhibit.status} />}
-          {!missing && <button className="button" disabled={loading || Boolean(working)} onClick={refresh}>Atnaujinti</button>}
+          {exhibit && !missing && (
+            <>
+              <button className="button" disabled={busy || Boolean(error)} onClick={() => { setDetailError(""); setEditNotice(""); setEditing(true); }}>Redaguoti</button>
+              <button className="button" disabled={busy || Boolean(error)} onClick={() => void remove()}>{deleting ? "Šalinama…" : "Šalinti"}</button>
+            </>
+          )}
+          {!missing && <button className="button" disabled={busy} onClick={refresh}>Atnaujinti</button>}
         </div>
       </header>
       {!missing && <LoadNotice error={error} loading={loading} retry={refresh} />}
+      {detailError && <ErrorNotice message={detailError} />}
+      {editNotice && <p className="notice notice-success" role="status">{editNotice}</p>}
       {data && exhibit && !missing && (
         <>
+          {editing && <ExhibitForm exhibit={exhibit} locations={data[2]} onSaved={saved} onCancel={() => setEditing(false)} />}
           <section className="panel" aria-labelledby="details-heading">
             <div className="panel-heading"><h2 id="details-heading">Eksponato duomenys</h2></div>
             <dl className="fact-grid">
               <div><dt>Kategorija</dt><dd>{exhibit.category || "—"}</dd></div>
               <div><dt>Dabartinė saugojimo vieta</dt><dd><LocationCell location={exhibit.storageLocation} id={exhibit.storageLocationId} /></dd></div>
+              <div><dt>Saugojimo zona</dt><dd>{exhibit.storageLocation?.storageZoneName ?? "—"}</dd></div>
               <div className="full-width"><dt>Aprašymas</dt><dd className="description">{exhibit.description || "—"}</dd></div>
             </dl>
           </section>
@@ -326,7 +372,7 @@ export function ExhibitDetail({ id }: { id: string }) {
             <form className="form-body" onSubmit={(event) => { event.preventDefault(); void apply(assignmentAction); }}>
               {notice && <p className="notice notice-success" role="status">{notice}</p>}
               {actionError && <ErrorNotice message={actionError} />}
-              <fieldset className="inline-form" disabled={loading || Boolean(working) || Boolean(error)}>
+              <fieldset className="inline-form" disabled={busy || Boolean(error)}>
                 {locations.length > 0 ? (
                   <>
                     <label>
@@ -388,9 +434,11 @@ function LocationSelect({ value, locations, onChange }: {
   return (
     <select value={value} required onChange={(event) => onChange(event.target.value)}>
       <option value="">Pasirinkite saugojimo vietą</option>
-      {locations.map((location) => (
-        <option key={location.id} value={location.id}>{location.code} · {location.name}</option>
-      ))}
+      <LocationOptions locations={locations} />
     </select>
   );
+}
+
+function LocationOptions({ locations }: { locations: StorageLocation[] }) {
+  return locations.map((location) => <option key={location.id} value={location.id}>{location.code} · {location.name}</option>);
 }

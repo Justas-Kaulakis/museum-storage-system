@@ -10,8 +10,8 @@ namespace MuseumStorage.Tests;
 
 public sealed class StorageRegistryTests : IAsyncLifetime
 {
-    private static readonly StorageLocationRequest ShelfA = new() { Code = "SHELF-A1", Name = "Shelf A1" };
-    private static readonly StorageLocationRequest ShelfB = new() { Code = "SHELF-B1", Name = "Shelf B1" };
+    private static readonly StorageLocationRequest ShelfA = new() { Code = "SHELF-A1", Name = "Shelf A1", StorageZoneId = 1 };
+    private static readonly StorageLocationRequest ShelfB = new() { Code = "SHELF-B1", Name = "Shelf B1", StorageZoneId = 1 };
     private static readonly ExhibitRequest SampleExhibit = new()
     {
         Code = "EXHIBIT-0001",
@@ -84,7 +84,7 @@ public sealed class StorageRegistryTests : IAsyncLifetime
     {
         await using var dbContext = CreateDbContext();
         var result = await new StorageLocationsController(dbContext).Create(
-            new StorageLocationRequest { Code = code, Name = name }, CancellationToken.None);
+            new StorageLocationRequest { Code = code, Name = name, StorageZoneId = 1 }, CancellationToken.None);
         AssertValidationError(result, field);
     }
 
@@ -101,8 +101,8 @@ public sealed class StorageRegistryTests : IAsyncLifetime
         Assert.Equal(SampleExhibit.Description, fetched.Description);
         Assert.Equal("Stored", fetched.Status);
         Assert.Equal(location.Id, fetched.StorageLocationId);
-        Assert.Equal(ShelfA.Code, Assert.IsType<StorageLocation>(fetched.StorageLocation).Code);
-        Assert.Equal(ShelfA.Name, Assert.IsType<StorageLocation>(created.StorageLocation).Name);
+        Assert.Equal(ShelfA.Code, Assert.IsType<StorageLocationResponse>(fetched.StorageLocation).Code);
+        Assert.Equal(ShelfA.Name, Assert.IsType<StorageLocationResponse>(created.StorageLocation).Name);
     }
 
     [Fact]
@@ -227,14 +227,213 @@ public sealed class StorageRegistryTests : IAsyncLifetime
         Assert.Equal(location.Id, (await dbContext.Exhibits.SingleAsync()).StorageLocationId);
     }
 
+    [Fact]
+    public async Task ZoneCanBeCreatedUpdatedAndRetrieved()
+    {
+        var zone = await CreateZoneAsync(" ZONE-A ", " Pagrindinė saugykla ");
+        Assert.Equal("ZONE-A", zone.Code);
+        Assert.Equal("Pagrindinė saugykla", zone.Name);
+
+        await using var dbContext = CreateDbContext();
+        var controller = new StorageZonesController(dbContext);
+        var request = new StorageZoneRequest { Code = "ZONE-B", Name = "Antroji saugykla" };
+        Assert.Equal(request.Code, GetOk(await controller.Update(zone.Id, request, CancellationToken.None)).Code);
+        var stored = GetOk(await controller.GetById(zone.Id, CancellationToken.None));
+        Assert.Equal(request.Name, stored.Name);
+        var zones = GetOk(await controller.GetAll(CancellationToken.None));
+        Assert.Equal(["DEFAULT", "ZONE-B"], zones.Select(x => x.Code));
+    }
+
+    [Fact]
+    public async Task ZoneCreateAndUpdateRejectDuplicateCode()
+    {
+        var zone = await CreateZoneAsync("ZONE-A");
+        var second = await CreateZoneAsync("ZONE-B");
+        var request = new StorageZoneRequest { Code = zone.Code, Name = "Kita zona" };
+
+        await using var createContext = CreateDbContext();
+        AssertValidationError(await new StorageZonesController(createContext).Create(request, CancellationToken.None), nameof(request.Code));
+
+        await using var updateContext = CreateDbContext();
+        AssertValidationError(await new StorageZonesController(updateContext).Update(second.Id, request, CancellationToken.None), nameof(request.Code));
+    }
+
+    [Theory]
+    [InlineData(" ", "Saugykla", nameof(StorageZoneRequest.Code))]
+    [InlineData("ZONE-A", "", nameof(StorageZoneRequest.Name))]
+    public async Task ZoneRequiresNonblankCodeAndName(string code, string name, string field)
+    {
+        await using var dbContext = CreateDbContext();
+        var request = new StorageZoneRequest { Code = code, Name = name };
+        AssertValidationError(await new StorageZonesController(dbContext).Create(request, CancellationToken.None), field);
+    }
+
+    [Fact]
+    public async Task OnlyAnEmptyZoneCanBeDeleted()
+    {
+        var occupied = await CreateZoneAsync("ZONE-A");
+        var empty = await CreateZoneAsync("ZONE-B");
+        var location = await CreateLocationAsync(ShelfA with { StorageZoneId = occupied.Id });
+        await using var dbContext = CreateDbContext();
+        var controller = new StorageZonesController(dbContext);
+
+        Assert.IsType<ConflictObjectResult>(await controller.Delete(occupied.Id, CancellationToken.None));
+        Assert.Equal(occupied.Id, (await dbContext.StorageLocations.SingleAsync(x => x.Id == location.Id)).StorageZoneId);
+        Assert.IsType<NoContentResult>(await controller.Delete(empty.Id, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await controller.Delete(empty.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task LocationCanBeCreatedInAZoneAndReassigned()
+    {
+        var first = await CreateZoneAsync("ZONE-A", "Pagrindinė saugykla");
+        var second = await CreateZoneAsync("ZONE-B", "Antroji saugykla");
+        var location = await CreateLocationAsync(ShelfA with { StorageZoneId = first.Id });
+        Assert.Equal(first.Id, location.StorageZoneId);
+        Assert.Equal(first.Code, location.StorageZoneCode);
+        Assert.Equal(first.Name, location.StorageZoneName);
+
+        await using var dbContext = CreateDbContext();
+        var controller = new StorageLocationsController(dbContext);
+        var request = ShelfA with { Code = "B-SHELF-01", Name = "Lentyna B1", StorageZoneId = second.Id };
+        var updated = GetOk(await controller.Update(location.Id, request, CancellationToken.None));
+        Assert.Equal(second.Id, updated.StorageZoneId);
+        Assert.Equal(second.Name, updated.StorageZoneName);
+        Assert.Equal(request.Code, updated.Code);
+        Assert.Equal(request.Name, updated.Name);
+        Assert.Equal(updated, GetOk(await controller.GetById(location.Id, CancellationToken.None)));
+    }
+
+    [Theory]
+    [InlineData(0L)]
+    [InlineData(999L)]
+    public async Task LocationCannotBeCreatedOrUpdatedWithAnUnknownZone(long zoneId)
+    {
+        var location = await CreateLocationAsync(ShelfA);
+        var request = ShelfB with { StorageZoneId = zoneId };
+        await using var context = CreateDbContext();
+        var controller = new StorageLocationsController(context);
+        AssertValidationError(await controller.Create(request, CancellationToken.None), nameof(request.StorageZoneId));
+        controller.ModelState.Clear();
+        AssertValidationError(await controller.Update(location.Id, request, CancellationToken.None), nameof(request.StorageZoneId));
+        Assert.Equal(location, GetOk(await controller.GetById(location.Id, CancellationToken.None)));
+    }
+
+    [Fact]
+    public async Task UnusedLocationCanBeDeletedAndOccupiedLocationCannot()
+    {
+        var used = await CreateLocationAsync(ShelfA);
+        var unused = await CreateLocationAsync(ShelfB);
+        await CreateExhibitAsync(SampleExhibit with { Status = "Stored", StorageLocationId = used.Id });
+        await using var dbContext = CreateDbContext();
+        var controller = new StorageLocationsController(dbContext);
+
+        Assert.IsType<ConflictObjectResult>(await controller.Delete(used.Id, CancellationToken.None));
+        Assert.IsType<NoContentResult>(await controller.Delete(unused.Id, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await controller.Delete(unused.Id, CancellationToken.None));
+        Assert.True(await dbContext.StorageLocations.AnyAsync(x => x.Id == used.Id));
+    }
+
+    [Fact]
+    public async Task DeletingFormerLocationPreservesHistoryAndTheOtherLocation()
+    {
+        var from = await CreateLocationAsync(ShelfA);
+        var to = await CreateLocationAsync(ShelfB);
+        var exhibit = await CreateExhibitAsync(SampleExhibit with { Status = "Stored", StorageLocationId = from.Id });
+        await using var writeContext = CreateDbContext();
+        var exhibits = new ExhibitsController(writeContext);
+        GetOk(await exhibits.Move(exhibit.Id, new StorageOperationRequest { StorageLocationId = to.Id }, CancellationToken.None));
+        var before = Assert.Single(GetOk(await exhibits.GetOperations(exhibit.Id, CancellationToken.None)));
+
+        await using var deleteContext = CreateDbContext();
+        Assert.IsType<NoContentResult>(await new StorageLocationsController(deleteContext).Delete(from.Id, CancellationToken.None));
+
+        await using var readContext = CreateDbContext();
+        var history = GetOk(await new ExhibitsController(readContext).GetOperations(exhibit.Id, CancellationToken.None));
+        Assert.Equal(before with { FromStorageLocationId = null, FromStorageLocation = null }, Assert.Single(history));
+        Assert.Equal(to.Id, (await readContext.Exhibits.SingleAsync()).StorageLocationId);
+    }
+
+    [Fact]
+    public async Task ExhibitUpdateCanChangeCodeWithoutAddingAStorageOperation()
+    {
+        var location = await CreateLocationAsync(ShelfA);
+        var request = SampleExhibit with { Status = "Stored", StorageLocationId = location.Id };
+        var exhibit = await CreateExhibitAsync(request);
+        await using var dbContext = CreateDbContext();
+        var controller = new ExhibitsController(dbContext);
+        var update = request with { Code = "EXHIBIT-0002", Name = "Naujas pavadinimas" };
+
+        var result = GetOk(await controller.Update(exhibit.Id, update, CancellationToken.None));
+        Assert.Equal(update.Code, result.Code);
+        Assert.Equal(update.Name, result.Name);
+        Assert.Equal(location.Id, result.StorageLocationId);
+        Assert.Empty(await dbContext.StorageOperations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ExhibitDeletionRemovesOnlyItsHistory()
+    {
+        var shelf = await CreateLocationAsync(ShelfA);
+        var removed = await CreateExhibitAsync(SampleExhibit);
+        var kept = await CreateExhibitAsync(SampleExhibit with { Code = "EXHIBIT-0002" });
+        await using var dbContext = CreateDbContext();
+        var controller = new ExhibitsController(dbContext);
+        var assignment = new StorageOperationRequest { StorageLocationId = shelf.Id };
+        GetOk(await controller.CheckIn(removed.Id, assignment, CancellationToken.None));
+        GetOk(await controller.CheckIn(kept.Id, assignment, CancellationToken.None));
+
+        Assert.IsType<NoContentResult>(await controller.Delete(removed.Id, CancellationToken.None));
+        Assert.IsType<NotFoundResult>(await controller.Delete(removed.Id, CancellationToken.None));
+        Assert.IsType<NotFoundResult>((await controller.GetById(removed.Id, CancellationToken.None)).Result);
+        Assert.IsType<NotFoundResult>((await controller.GetOperations(removed.Id, CancellationToken.None)).Result);
+        Assert.Equal(kept.Id, (await dbContext.Exhibits.SingleAsync()).Id);
+        Assert.Equal(kept.Id, (await dbContext.StorageOperations.SingleAsync()).ExhibitId);
+        Assert.True(await dbContext.StorageLocations.AnyAsync(x => x.Id == shelf.Id));
+    }
+
+    [Fact]
+    public async Task ExhibitsCanBeFilteredBySearchCategoryStatusZoneAndLocation()
+    {
+        var zone = await CreateZoneAsync("ZONE-A");
+        var firstShelf = await CreateLocationAsync(ShelfA with { StorageZoneId = zone.Id });
+        var secondShelf = await CreateLocationAsync(ShelfB with { StorageZoneId = zone.Id });
+        var otherShelf = await CreateLocationAsync(ShelfA with { Code = "SHELF-C1" });
+        var first = await CreateExhibitAsync(SampleExhibit with { Name = "Žalioji lėkštė", Category = "Keramika", Status = "Stored", StorageLocationId = firstShelf.Id });
+        var second = await CreateExhibitAsync(SampleExhibit with { Code = "EXHIBIT-0002", Name = "Įrankis", Status = "Stored", StorageLocationId = secondShelf.Id });
+        var checkedOut = await CreateExhibitAsync(SampleExhibit with { Code = "EXHIBIT-0003" });
+        await CreateExhibitAsync(SampleExhibit with { Code = "EXHIBIT-0004", Status = "Stored", StorageLocationId = otherShelf.Id });
+
+        await using var dbContext = CreateDbContext();
+        var controller = new ExhibitsController(dbContext);
+        var ct = CancellationToken.None;
+        Assert.Equal(first.Id, Assert.Single(GetOk(await controller.GetAll(ct, search: " ŽALIOJI "))).Id);
+        Assert.Equal(second.Id, Assert.Single(GetOk(await controller.GetAll(ct, search: "exhibit-0002"))).Id);
+        Assert.Equal(first.Id, Assert.Single(GetOk(await controller.GetAll(ct, category: "KERAM"))).Id);
+        Assert.Equal(checkedOut.Id, Assert.Single(GetOk(await controller.GetAll(ct, status: "CheckedOut"))).Id);
+        Assert.Equal([first.Id, second.Id], GetOk(await controller.GetAll(ct, zoneId: zone.Id)).Select(x => x.Id));
+        Assert.Equal(first.Id, Assert.Single(GetOk(await controller.GetAll(ct, storageLocationId: firstShelf.Id))).Id);
+        Assert.Equal(second.Id, Assert.Single(GetOk(await controller.GetAll(ct, search: "įrankis", status: "Stored", zoneId: zone.Id, storageLocationId: secondShelf.Id))).Id);
+        Assert.Empty(GetOk(await controller.GetAll(ct, status: "CheckedOut", zoneId: zone.Id)));
+        AssertValidationError(await controller.GetAll(ct, status: "Invalid"), "status");
+    }
+
     private MuseumStorageDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<MuseumStorageDbContext>().UseSqlite(_connection).Options);
 
-    private async Task<StorageLocation> CreateLocationAsync(StorageLocationRequest request)
+    private async Task<StorageLocationResponse> CreateLocationAsync(StorageLocationRequest request)
     {
         await using var dbContext = CreateDbContext();
         var result = await new StorageLocationsController(dbContext).Create(request, CancellationToken.None);
-        return Assert.IsType<StorageLocation>(Assert.IsType<CreatedAtActionResult>(result.Result).Value);
+        return Assert.IsType<StorageLocationResponse>(Assert.IsType<CreatedAtActionResult>(result.Result).Value);
+    }
+
+    private async Task<StorageZone> CreateZoneAsync(string code, string name = "Saugykla")
+    {
+        await using var dbContext = CreateDbContext();
+        var request = new StorageZoneRequest { Code = code, Name = name };
+        var result = await new StorageZonesController(dbContext).Create(request, CancellationToken.None);
+        return Assert.IsType<StorageZone>(Assert.IsType<CreatedAtActionResult>(result.Result).Value);
     }
 
     private async Task<ExhibitResponse> CreateExhibitAsync(ExhibitRequest request)

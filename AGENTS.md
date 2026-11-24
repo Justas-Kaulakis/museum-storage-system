@@ -225,11 +225,12 @@ Do not replace the current architecture with minimal APIs or a different framewo
 
 ## Current backend state
 
-The backend persists sensor readings, environmental settings, exhibits, storage locations, and storage-operation history in SQLite.
+The backend persists sensor readings, environmental settings, exhibits, storage zones, storage locations, and storage-operation history in SQLite. Each storage location belongs to one storage zone.
 
 - POST /api/sensor-readings stores ESP32 telemetry. GET /api/sensor-readings returns recent readings newest-first.
 - GET and PUT /api/environment-settings read and update the environmental thresholds the ESP32 fetches.
-- /api/storage-locations and /api/exhibits support listing, retrieving, creating, and updating registry entries. Exhibits can also be looked up by code.
+- /api/storage-zones, /api/storage-locations, and /api/exhibits support listing, retrieving, creating, updating, and deleting registry entries. Locations require an existing zone and cannot be deleted while they contain exhibits. Zones cannot be deleted while they contain locations.
+- GET /api/exhibits accepts optional search, category, status, zoneId, and storageLocationId filters. Exhibits can also be looked up by code. The registry page filters zones and locations and links locations to the filtered exhibit list.
 - POST /api/exhibits/scan-qr provides QR-based exhibit lookup.
 - POST /api/exhibits/{id}/check-in, /move, and /check-out apply storage operations. GET /api/exhibits/{id}/operations returns the exhibit's history newest-first.
 

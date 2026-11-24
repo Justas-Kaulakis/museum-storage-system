@@ -18,8 +18,8 @@ public sealed class StorageOperationTests : IAsyncLifetime
     };
 
     private readonly SqliteConnection _connection = new("Data Source=:memory:;Foreign Keys=True");
-    private readonly StorageLocation _firstLocation = new() { Code = "SHELF-A1", Name = "Shelf A1" };
-    private readonly StorageLocation _secondLocation = new() { Code = "SHELF-B2", Name = "Shelf B2" };
+    private readonly StorageLocation _firstLocation = new() { Code = "SHELF-A1", Name = "Shelf A1", StorageZoneId = 1 };
+    private readonly StorageLocation _secondLocation = new() { Code = "SHELF-B2", Name = "Shelf B2", StorageZoneId = 1 };
 
     public async Task InitializeAsync()
     {

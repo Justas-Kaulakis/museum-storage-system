@@ -149,10 +149,15 @@ namespace MuseumStorage.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<long>("StorageZoneId")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")
                         .IsUnique();
+
+                    b.HasIndex("StorageZoneId");
 
                     b.ToTable("StorageLocations");
                 });
@@ -190,6 +195,28 @@ namespace MuseumStorage.Api.Migrations
                     b.ToTable("StorageOperations");
                 });
 
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageZone", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique();
+
+                    b.ToTable("StorageZones");
+                });
+
             modelBuilder.Entity("MuseumStorage.Api.Entities.Exhibit", b =>
                 {
                     b.HasOne("MuseumStorage.Api.Entities.StorageLocation", "StorageLocation")
@@ -198,6 +225,17 @@ namespace MuseumStorage.Api.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.Navigation("StorageLocation");
+                });
+
+            modelBuilder.Entity("MuseumStorage.Api.Entities.StorageLocation", b =>
+                {
+                    b.HasOne("MuseumStorage.Api.Entities.StorageZone", "StorageZone")
+                        .WithMany()
+                        .HasForeignKey("StorageZoneId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("StorageZone");
                 });
 
             modelBuilder.Entity("MuseumStorage.Api.Entities.StorageOperation", b =>

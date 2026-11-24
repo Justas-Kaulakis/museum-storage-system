@@ -1,5 +1,3 @@
-using MuseumStorage.Api.Entities;
-
 namespace MuseumStorage.Api.Models;
 
 public sealed record StorageOperationResponse(
@@ -9,5 +7,5 @@ public sealed record StorageOperationResponse(
     long? FromStorageLocationId,
     long? ToStorageLocationId,
     DateTime CreatedAt,
-    StorageLocation? FromStorageLocation,
-    StorageLocation? ToStorageLocation);
+    StorageLocationResponse? FromStorageLocation,
+    StorageLocationResponse? ToStorageLocation);

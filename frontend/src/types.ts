@@ -18,10 +18,16 @@ export interface EnvironmentSettings {
   humidityAlarm: number;
 }
 
-export interface StorageLocation {
+export interface StorageZone {
   id: number;
   code: string;
   name: string;
+}
+
+export interface StorageLocation extends StorageZone {
+  storageZoneId: number;
+  storageZoneCode: string;
+  storageZoneName: string;
 }
 
 export type ExhibitStatus = "Stored" | "CheckedOut";

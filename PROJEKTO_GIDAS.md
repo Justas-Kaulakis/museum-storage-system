@@ -52,7 +52,7 @@ Backend atsakingas už:
 
 - jutiklių matavimų saugojimą;
 - aplinkos ribinių reikšmių saugojimą;
-- eksponatų ir saugojimo vietų registrą;
+- eksponatų, saugojimo zonų ir vietų registrą;
 - padėjimo, paėmimo ir perkėlimo operacijas;
 - operacijų istoriją;
 - QR nuotraukos dekodavimą ir eksponato paiešką.
@@ -107,8 +107,8 @@ Frontend turi 3 pagrindinius vaizdus:
 
 ```text
 /               Aplinkos stebėjimas ir ribinės reikšmės
-/exhibits       Eksponatų registras ir saugojimo vietos
-/exhibits/:id   Eksponato informacija ir operacijų istorija
+/exhibits       Eksponatų registras, saugojimo zonos ir vietos
+/exhibits/:id   Eksponato informacija, redagavimas ir operacijų istorija
 ```
 
 Pagrindiniai failai:
@@ -118,6 +118,7 @@ frontend/src/
 ├── main.tsx          routing ir navigacija
 ├── environment.tsx   jutikliai ir aplinkos nustatymai
 ├── exhibits.tsx      eksponatai, QR, saugojimo operacijos
+├── storage.tsx       saugojimo zonų ir vietų tvarkymas
 ├── api.ts            HTTP užklausos
 ├── types.ts          TypeScript duomenų tipai
 └── shared.tsx        bendri loading/error helperiai

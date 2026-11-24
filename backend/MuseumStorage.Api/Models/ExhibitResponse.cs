@@ -1,5 +1,3 @@
-using MuseumStorage.Api.Entities;
-
 namespace MuseumStorage.Api.Models;
 
 public sealed record ExhibitResponse(
@@ -10,4 +8,4 @@ public sealed record ExhibitResponse(
     string? Category,
     string Status,
     long? StorageLocationId,
-    StorageLocation? StorageLocation);
+    StorageLocationResponse? StorageLocation);

@@ -28,7 +28,7 @@ public sealed class ExhibitQrScanTests : IAsyncLifetime
             Code = ExhibitCode,
             Name = "Ceramic Bowl",
             Status = ExhibitStatus.Stored,
-            StorageLocation = new StorageLocation { Code = "SHELF-A1", Name = "Shelf A1" }
+            StorageLocation = new StorageLocation { Code = "SHELF-A1", Name = "Shelf A1", StorageZoneId = 1 }
         };
         dbContext.Exhibits.Add(exhibit);
         await dbContext.SaveChangesAsync();

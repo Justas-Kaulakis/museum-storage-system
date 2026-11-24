@@ -39,13 +39,25 @@ Content-Type: application/json
 ###
 
 # Run the storage workflow requests in order. Use fresh codes for another run.
+# @name createDemoZone
+POST {{MuseumStorage.Api_HostAddress}}/api/storage-zones
+Content-Type: application/json
+
+{
+  "code": "ZONE-DEMO",
+  "name": "Demo storage zone"
+}
+
+###
+
 # @name createCheckInLocation
 POST {{MuseumStorage.Api_HostAddress}}/api/storage-locations
 Content-Type: application/json
 
 {
   "code": "SHELF-DEMO-A1",
-  "name": "Demo Shelf A1"
+  "name": "Demo Shelf A1",
+  "storageZoneId": {{createDemoZone.response.body.$.id}}
 }
 
 ###
@@ -56,7 +68,8 @@ Content-Type: application/json
 
 {
   "code": "SHELF-DEMO-B2",
-  "name": "Demo Shelf B2"
+  "name": "Demo Shelf B2",
+  "storageZoneId": {{createDemoZone.response.body.$.id}}
 }
 
 ###

@@ -13,6 +13,7 @@ public class MuseumStorageDbContext : DbContext
     public DbSet<SensorReading> SensorReadings => Set<SensorReading>();
     public DbSet<EnvironmentSettings> EnvironmentSettings => Set<EnvironmentSettings>();
     public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
+    public DbSet<StorageZone> StorageZones => Set<StorageZone>();
     public DbSet<Exhibit> Exhibits => Set<Exhibit>();
     public DbSet<StorageOperation> StorageOperations => Set<StorageOperation>();
 
@@ -32,7 +33,13 @@ public class MuseumStorageDbContext : DbContext
             HumidityAlarm = 80.0
         });
 
-        modelBuilder.Entity<StorageLocation>().HasIndex(x => x.Code).IsUnique();
+        modelBuilder.Entity<StorageZone>().HasIndex(x => x.Code).IsUnique();
+        var locations = modelBuilder.Entity<StorageLocation>();
+        locations.HasIndex(x => x.Code).IsUnique();
+        locations.HasOne(x => x.StorageZone)
+            .WithMany()
+            .HasForeignKey(x => x.StorageZoneId)
+            .OnDelete(DeleteBehavior.Restrict);
 
         var exhibits = modelBuilder.Entity<Exhibit>();
         exhibits.HasIndex(x => x.Code).IsUnique();
